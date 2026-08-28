@@ -1,18 +1,12 @@
 const MEADOW_RADIUS = 55;
 const DENSE_GRASS_ZONES = [
-  { count: 6000, innerRadius: 1.8, outerRadius: 22 },
-  { count: 6000, innerRadius: 22, outerRadius: 42 },
-  { count: 2000, innerRadius: 42, outerRadius: 58 },
+  { count: 35000, innerRadius: 1.8, outerRadius: 22 },
+  { count: 25000, innerRadius: 22, outerRadius: 42 },
+  { count: 15000, innerRadius: 42, outerRadius: 58 },
 ];
-const DENSE_GROUND_COVER_ZONES = [
-  { count: 25000, innerRadius: 1.8, outerRadius: 22 },
-  { count: 22000, innerRadius: 22, outerRadius: 42 },
-  { count: 13000, innerRadius: 42, outerRadius: 58 },
-];
-const WISPY_GRASS_INSTANCE_COUNT = 400;
-const GRASS_SCALE_RANGE = [0.1, 0.2];
-const WISPY_GRASS_SCALE_RANGE = [0.09, 0.17];
-const GROUND_COVER_SCALE_RANGE = [0.74, 1.16];
+const WISPY_GRASS_INSTANCE_COUNT = 800;
+const GRASS_SCALE_RANGE = [0.14, 0.2];
+const WISPY_GRASS_SCALE_RANGE = [0.12, 0.18];
 const HOUSE_APPROACH_CLEARANCE = 1.15;
 const HOUSE_ENTRANCE_CLEARANCE = 2.1;
 const POLLEN_COUNT = 34;
@@ -366,11 +360,10 @@ function placeNature(scene, world, libraries, startPosition) {
   };
 
   const grassCount = createDenseGrassField(libraries.Grass_Common_Short, startPosition, random, DENSE_GRASS_ZONES, GRASS_SCALE_RANGE);
-  const groundCoverCount = createDenseGroundCover(scene, world, startPosition, random);
   const wispyGrassCount = createDenseGrassField(libraries.Grass_Wispy_Tall, startPosition, random, [
     { count: WISPY_GRASS_INSTANCE_COUNT, innerRadius: 7, outerRadius: 58 },
   ], WISPY_GRASS_SCALE_RANGE);
-  counts.grass = grassCount + groundCoverCount;
+  counts.grass = grassCount;
   counts.wispyGrass = wispyGrassCount;
 
   const treePlacements = [
@@ -452,52 +445,6 @@ function createInstanceGroup(scene, world, library, name, placement, startPositi
 function createDenseGrassField(library, startPosition, random, zones, scaleRange) {
   const mesh = library.meshes[0];
   return createThinInstanceField(mesh, startPosition, random, zones, scaleRange, 0);
-}
-
-function createDenseGroundCover(scene, world, startPosition, random) {
-  const mesh = createMeadowBladeCluster(scene);
-  mesh.parent = world;
-  const material = new BABYLON.StandardMaterial("dreamy-dense-meadow-ground-cover-material", scene);
-  material.diffuseColor = BABYLON.Color3.FromHexString("#347632");
-  material.emissiveColor = BABYLON.Color3.FromHexString("#0b2a10");
-  material.specularColor = BABYLON.Color3.Black();
-  material.backFaceCulling = false;
-  mesh.material = material;
-  mesh.isPickable = false;
-  mesh.receiveShadows = false;
-  return createThinInstanceField(mesh, startPosition, random, DENSE_GROUND_COVER_ZONES, GROUND_COVER_SCALE_RANGE, 0);
-}
-
-function createMeadowBladeCluster(scene) {
-  const mesh = new BABYLON.Mesh("dreamy-dense-meadow-ground-cover", scene);
-  const positions = [];
-  const indices = [];
-  const normals = [];
-  const halfWidth = 0.07;
-  const height = 0.24;
-
-  [0, Math.PI / 3, (Math.PI * 2) / 3].forEach((angle) => {
-    const sideX = Math.cos(angle) * halfWidth;
-    const sideZ = Math.sin(angle) * halfWidth;
-    const leanX = Math.sin(angle) * 0.032;
-    const leanZ = -Math.cos(angle) * 0.032;
-    const base = positions.length / 3;
-    positions.push(
-      -sideX, 0, -sideZ,
-      sideX, 0, sideZ,
-      sideX * 0.32 + leanX, height, sideZ * 0.32 + leanZ,
-      -sideX * 0.32 + leanX, height, -sideZ * 0.32 + leanZ,
-    );
-    indices.push(base, base + 1, base + 2, base, base + 2, base + 3);
-  });
-
-  BABYLON.VertexData.ComputeNormals(positions, indices, normals);
-  const vertexData = new BABYLON.VertexData();
-  vertexData.positions = positions;
-  vertexData.indices = indices;
-  vertexData.normals = normals;
-  vertexData.applyToMesh(mesh);
-  return mesh;
 }
 
 function createThinInstanceField(mesh, startPosition, random, zones, scaleRange, yOffset) {
