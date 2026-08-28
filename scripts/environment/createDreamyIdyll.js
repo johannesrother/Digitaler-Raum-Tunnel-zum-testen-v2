@@ -13,9 +13,11 @@ const HOUSE_ROOT = "./assets/idylle/";
 const HOUSE_FILE = "Haus.glb";
 const HOUSE_SCALE = 4.6;
 const HOUSE_OFFSET = new BABYLON.Vector3(-9, 0, 20.7);
-// The source door is on its local +Z facade. This rotation presents it to the
-// arriving visitor on world -Z, where the existing route approaches the Rift.
+// `Haus.glb` has one combined mesh (`output_unwrapped`), so the doorway is not
+// a separately addressable node.  Its visible entrance is on the source +Z
+// facade. Rotate that facade toward the visitor, who approaches from world -Z.
 const HOUSE_ROTATION_Y = Math.PI;
+const HOUSE_DOOR_LOCAL_NORMAL = new BABYLON.Vector3(0, 0, 1);
 
 const HORIZON_HILL_LAYOUT = [
   { angle: 0.08, radius: 134, scale: [31, 15, 22], yaw: -0.64 },
@@ -247,11 +249,18 @@ async function createHouseTarget(scene, world, startPosition) {
   house.receiveShadows = true;
 
   const bounds = house.getBoundingInfo().boundingBox;
-  const facadeNormal = new BABYLON.Vector3(0, 0, -1);
+  const localDoorPoint = new BABYLON.Vector3(
+    (bounds.minimum.x + bounds.maximum.x) * 0.5,
+    (bounds.minimum.y + bounds.maximum.y) * 0.5,
+    bounds.maximum.z,
+  );
+  const doorPointWorld = BABYLON.Vector3.TransformCoordinates(localDoorPoint, house.getWorldMatrix());
+  const facadeNormal = BABYLON.Vector3.TransformNormal(HOUSE_DOOR_LOCAL_NORMAL, house.getWorldMatrix())
+    .normalize();
   const riftCenter = new BABYLON.Vector3(
-    bounds.centerWorld.x,
+    doorPointWorld.x + facadeNormal.x * 0.18,
     getMeadowHeight(startPosition.x + HOUSE_OFFSET.x, startPosition.z + HOUSE_OFFSET.z, startPosition),
-    bounds.minimumWorld.z - 0.18,
+    doorPointWorld.z + facadeNormal.z * 0.18,
   );
   const travelForward = facadeNormal.negate();
   const lateral = new BABYLON.Vector3(travelForward.z, 0, -travelForward.x);
