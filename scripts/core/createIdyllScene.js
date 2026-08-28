@@ -48,13 +48,31 @@ export async function createIdyllScene(
   );
   removeIdyllObjectsFromTunnel(environment.assets.placed, tunnel.route);
   let dreamyIdyllTunnelClearanceApplied = false;
+  let dreamyIdyllObjectsClearanceApplied = false;
+  // The tunnel handoff cuts a real opening through the meadow. Retain its
+  // pristine topology so a later REEXPERIENCE starts with exactly the same
+  // ground beneath the house as the first run.
+  const originalDreamyMeadowIndices = dreamyIdyll.meadow.getIndices().slice();
+  const originalDreamyMeadowNormals = dreamyIdyll.meadow
+    .getVerticesData(BABYLON.VertexBuffer.NormalKind)
+    .slice();
+  const restoreDreamyMeadow = () => {
+    dreamyIdyll.meadow.setIndices(originalDreamyMeadowIndices.slice());
+    dreamyIdyll.meadow.updateVerticesData(
+      BABYLON.VertexBuffer.NormalKind,
+      originalDreamyMeadowNormals.slice(),
+    );
+  };
   const clearDreamyIdyllFromTunnel = () => {
     if (dreamyIdyllTunnelClearanceApplied) {
       return;
     }
     dreamyIdyllTunnelClearanceApplied = true;
     clearTunnelTerrain([dreamyIdyll.meadow], tunnel.route);
-    removeIdyllObjectsFromTunnel(dreamyIdyll.vegetation.entries, tunnel.route);
+    if (!dreamyIdyllObjectsClearanceApplied) {
+      removeIdyllObjectsFromTunnel(dreamyIdyll.vegetation.entries, tunnel.route);
+      dreamyIdyllObjectsClearanceApplied = true;
+    }
   };
   environment.lighting.excludeFromTunnel(tunnel.mesh);
   dreamyIdyll.excludeFromTunnel(tunnel.mesh);
@@ -99,6 +117,8 @@ export async function createIdyllScene(
     },
     onIdyllHidden: () => dreamyIdyll.hide(),
     onExperienceReset: () => {
+      restoreDreamyMeadow();
+      dreamyIdyllTunnelClearanceApplied = false;
       idyllSound.stop();
       riftSound.stop();
       suctionSound.stop();
