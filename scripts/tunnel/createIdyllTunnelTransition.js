@@ -44,7 +44,7 @@ export function createIdyllTunnelTransition(scene, options) {
     options.entrance,
     options.tunnel.route.start,
     options.tunnel.mesh,
-    options.riftMaskMeshes ?? options.idyllWorldMeshes,
+    options.idyllWorldMeshes,
   );
   const riftApproachTime = Math.max(0.5, tunnelRoute.entryTime - RIFT_APPROACH_REMAINING_TIME);
   const debug = createDebugPanel();

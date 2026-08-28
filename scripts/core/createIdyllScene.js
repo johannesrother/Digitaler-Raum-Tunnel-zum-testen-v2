@@ -64,7 +64,6 @@ export async function createIdyllScene(engine, canvas) {
   const suctionSound = createSuctionSound();
   const tunnelSound = createTunnelSound();
   const whiteRoomTone = createWhiteRoomTone();
-  const houseMeshes = new Set(dreamyIdyll.house.root.getChildMeshes(false));
   const transition = createIdyllTunnelTransition(scene, {
     startPosition: dreamyIdyll.startPosition,
     entrance: environment.architecture.entrance,
@@ -93,14 +92,6 @@ export async function createIdyllScene(engine, canvas) {
     onIdyllHidden: () => dreamyIdyll.hide(),
     idyllWorldMeshes: scene.meshes.filter((mesh) => (
       mesh !== tunnel.mesh && mesh.name !== "white-room-endless-void"
-    )),
-    // The house remains a static world object while the portal opens. It is
-    // intentionally excluded only from the Rift's stencil mask, not from the
-    // existing post-crossing idyll shutdown.
-    riftMaskMeshes: scene.meshes.filter((mesh) => (
-      mesh !== tunnel.mesh
-        && mesh.name !== "white-room-endless-void"
-        && !houseMeshes.has(mesh)
     )),
     previousWorldMeshes: scene.meshes.filter((mesh) => mesh.name !== "white-room-endless-void"),
     previousWorldLights: [...scene.lights],
