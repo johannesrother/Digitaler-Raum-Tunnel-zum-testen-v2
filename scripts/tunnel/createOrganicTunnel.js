@@ -20,6 +20,10 @@ const LATE_TUNNEL_RANGE_BOOST = 1.22;
 const WHITE_ROOM_SPILL_START = 36;
 const WHITE_ROOM_SPILL_MAX_INTENSITY = 4.5;
 const WHITE_ROOM_SPILL_RANGE = 52;
+const IDYLL_BACKLIGHT_START_INTENSITY = 50;
+const IDYLL_BACKLIGHT_RANGE = 54;
+const IDYLL_BACKLIGHT_FADE_START = 11;
+const IDYLL_BACKLIGHT_FADE_DURATION = 19;
 // Existing morph fields remain deliberately uneven so they do not read as one
 // synchronized tube pulse. Values are moderate and still safety-clamped.
 const WALL_MOTION_AMPLITUDES = [1.1, 1.2, 1.02, 1.16, 1.07, 1.13];
@@ -93,6 +97,7 @@ export function createOrganicTunnel(scene, options) {
     }
     wallDeformation.update(activeTime);
     updateTunnelLights(lights, route, activeTime, impulse);
+    updateTunnelEntranceMaterialMood(material, activeTime);
     impulse = Math.max(0, impulse - delta * 2.9);
   });
 
@@ -103,6 +108,7 @@ export function createOrganicTunnel(scene, options) {
       mesh.setEnabled(enabled);
       lights.points.forEach((light) => light.setEnabled(enabled));
       lights.fill.setEnabled(enabled);
+      lights.idyllBacklight.setEnabled(enabled);
       lights.whiteRoomSpill.setEnabled(enabled);
     },
     update(tunnelTime) {
@@ -120,6 +126,7 @@ export function createOrganicTunnel(scene, options) {
         nextImpulseAt += interval > 0 ? interval * (0.72 + ((nextImpulseAt * 1.73) % 0.58)) : 9;
       }
       updateTunnelLights(lights, route, activeTime, impulse * (0.25 + look.detail * 0.75));
+      updateTunnelEntranceMaterialMood(material, activeTime);
     },
     setSequenceActive(active) {
       sequenceActive = active;
@@ -127,12 +134,14 @@ export function createOrganicTunnel(scene, options) {
         activeTime = 0;
         impulse = 0;
         updateTunnelLights(lights, route, 0, 0);
+        updateTunnelEntranceMaterialMood(material, 0);
       }
     },
     dispose() {
       scene.onBeforeRenderObservable.remove(observer);
       lights.points.forEach((light) => light.dispose());
       lights.fill.dispose();
+      lights.idyllBacklight.dispose();
       lights.whiteRoomSpill.dispose();
       wallDeformation.dispose();
       mesh.dispose();
@@ -547,6 +556,11 @@ function createTunnelMaterial(scene) {
   material.roughness = 0.82;
   material.environmentIntensity = 0.08;
   material.specularIntensity = 0.1;
+  // The tunnel deliberately uses several localized rakes plus the two end
+  // lights. Keep every authored local light available to this one shell; the
+  // default four-light shader budget would otherwise drop the entrance
+  // backlight after the older grazing rigs.
+  material.maxSimultaneousLights = 12;
   material.backFaceCulling = false;
   return material;
 }
@@ -582,6 +596,21 @@ function createTunnelLights(scene, meshes, route) {
   fill.groundColor = BABYLON.Color3.FromHexString("#321d26");
   fill.intensity = 0.18;
   fill.includedOnlyMeshes.push(...meshes);
+  const entryFrame = route.frameAt(0);
+  const idyllBacklightPosition = entryFrame.position.subtract(entryFrame.tangent.scale(2.4));
+  idyllBacklightPosition.y += EYE_HEIGHT;
+  // This stays just behind the Rift and shines forward along the route. It is
+  // restricted to the tunnel shell, so the warm idyll spill cannot affect the
+  // exterior scene or the later White Room.
+  const idyllBacklight = new BABYLON.PointLight(
+    "idyll-tunnel-warm-backlight",
+    idyllBacklightPosition,
+    scene,
+  );
+  idyllBacklight.diffuse = BABYLON.Color3.FromHexString("#ffe2bd");
+  idyllBacklight.range = IDYLL_BACKLIGHT_RANGE;
+  idyllBacklight.intensity = IDYLL_BACKLIGHT_START_INTENSITY;
+  idyllBacklight.includedOnlyMeshes.push(...meshes);
   const exitFrame = route.frameAt(1);
   const spillPosition = exitFrame.position.add(exitFrame.tangent.scale(3.1));
   spillPosition.y += EYE_HEIGHT;
@@ -599,12 +628,12 @@ function createTunnelLights(scene, meshes, route) {
   whiteRoomSpill.range = WHITE_ROOM_SPILL_RANGE;
   whiteRoomSpill.intensity = 0;
   whiteRoomSpill.includedOnlyMeshes.push(...meshes);
-  return { points, fill, whiteRoomSpill, rigs: GRAZING_LIGHT_RIGS };
+  return { points, fill, idyllBacklight, whiteRoomSpill, rigs: GRAZING_LIGHT_RIGS };
 }
 
 function updateTunnelLights(lights, route, time, impulse) {
   const look = getTunnelLook(time);
-  const entryTransition = smoothstep((time - 7) / 23);
+  const entryTransition = smoothstep((time - IDYLL_BACKLIGHT_FADE_START) / IDYLL_BACKLIGHT_FADE_DURATION);
   const entryWarmth = 1 - entryTransition;
   // Keep the end dark, but never allow the converging tunnel to lose all
   // readable relief shortly before the White Room aperture.
@@ -619,7 +648,20 @@ function updateTunnelLights(lights, route, time, impulse) {
   lights.fill.diffuse = BABYLON.Color3.Lerp(warmEntryLight, coolTunnelFill, entryTransition);
   lights.fill.groundColor = BABYLON.Color3.Lerp(warmEntryGround, coolTunnelGround, entryTransition);
   const tunnelFill = (0.14 + look.light * 0.13 + lateVisibility * 0.14) * FILL_LIGHT_BOOST;
-  lights.fill.intensity = BABYLON.Scalar.Lerp(0.43, tunnelFill, entryTransition);
+  // At entry the fill stays entirely local to the shell. Together with the
+  // directional backlight, it preserves a warm, legible continuation of the
+  // idyll before the neutral tunnel lighting gradually takes over.
+  lights.fill.intensity = BABYLON.Scalar.Lerp(5.4, tunnelFill, entryTransition);
+  // Keep the daylight source just behind the traveller during the opening
+  // stretch. This makes the warm entry illumination reach the nearby ribs
+  // instead of falling away at the stationary portal after only a few metres.
+  const backlightTime = BABYLON.Scalar.Clamp(time - 2.2, 0, TUNNEL_DURATION);
+  const backlightFrame = route.frameAt(backlightTime / TUNNEL_DURATION);
+  lights.idyllBacklight.position.copyFrom(backlightFrame.position);
+  lights.idyllBacklight.position.y += EYE_HEIGHT;
+  lights.idyllBacklight.position.addInPlace(backlightFrame.tangent.scale(-1.6));
+  lights.idyllBacklight.position.addInPlace(backlightFrame.lateral.scale(0.34));
+  lights.idyllBacklight.intensity = IDYLL_BACKLIGHT_START_INTENSITY * entryWarmth;
   lights.whiteRoomSpill.intensity = WHITE_ROOM_SPILL_MAX_INTENSITY * whiteRoomSpillProgress;
   lights.points.forEach((light, index) => {
     const rig = lights.rigs[index];
@@ -652,6 +694,18 @@ function updateTunnelLights(lights, route, time, impulse) {
       : baseColor;
     light.diffuse = BABYLON.Color3.Lerp(warmEntryLight, tunnelColor, entryTransition);
   });
+}
+
+function updateTunnelEntranceMaterialMood(material, time) {
+  const transition = smoothstep((time - IDYLL_BACKLIGHT_FADE_START) / IDYLL_BACKLIGHT_FADE_DURATION);
+  // This is a local multiplier for the existing PBR texture—not exposure or
+  // emissive light. It lets the warm entrance light read on the supplied dark
+  // albedo, then restores the established neutral material by 30 seconds.
+  material.albedoColor.set(
+    BABYLON.Scalar.Lerp(0.824, 0.427, transition),
+    BABYLON.Scalar.Lerp(0.627, 0.467, transition),
+    BABYLON.Scalar.Lerp(0.439, 0.502, transition),
+  );
 }
 
 function createTexture(scene, url, tiling, gammaSpace) {
