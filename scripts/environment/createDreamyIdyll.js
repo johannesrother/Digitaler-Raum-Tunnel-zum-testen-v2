@@ -13,6 +13,9 @@ const HOUSE_ROOT = "./assets/idylle/";
 const HOUSE_FILE = "Haus.glb";
 const HOUSE_SCALE = 4.6;
 const HOUSE_OFFSET = new BABYLON.Vector3(-9, 0, 20.7);
+// The source door is on its local +Z facade. This rotation presents it to the
+// arriving visitor on world -Z, where the existing route approaches the Rift.
+const HOUSE_ROTATION_Y = Math.PI;
 
 const HORIZON_HILL_LAYOUT = [
   { angle: 0.08, radius: 134, scale: [31, 15, 22], yaw: -0.64 },
@@ -228,6 +231,7 @@ async function createHouseTarget(scene, world, startPosition) {
   });
   houseRoot.parent = world;
   houseRoot.scaling.setAll(HOUSE_SCALE);
+  houseRoot.rotation.y = HOUSE_ROTATION_Y;
   houseRoot.position.set(
     startPosition.x + HOUSE_OFFSET.x,
     getMeadowHeight(startPosition.x + HOUSE_OFFSET.x, startPosition.z + HOUSE_OFFSET.z, startPosition)
