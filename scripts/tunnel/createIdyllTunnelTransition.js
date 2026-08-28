@@ -93,6 +93,7 @@ export function createIdyllTunnelTransition(scene, options) {
       // Keep the real idyll rendered behind the loading screen while freezing
       // every timeline-driven transition until START EXPERIENCE is clicked.
       previousFrameTime = performance.now();
+      rift.hideBeforeStart();
       return;
     }
     flashDebug.nextFrame();
@@ -614,8 +615,20 @@ function createSpacetimeRift(scene, entrance, tunnelStart, tunnelMesh, idyllWorl
     });
     aperture.mesh.updateVerticesData(BABYLON.VertexBuffer.PositionKind, aperture.positions, true);
   };
+  const hideBeforeStart = () => {
+    // Creation alone must not expose portal meshes while the fullscreen start
+    // image is shown. The normal update() path owns them after the click.
+    setPortalMask(false);
+    apertureMask.mesh.setEnabled(false);
+    voidMesh.mesh.setEnabled(false);
+    fragments.forEach(({ mesh }) => mesh.setEnabled(false));
+    cracks.forEach((mesh) => mesh.setEnabled(false));
+    edgeHighlights.forEach((mesh) => mesh.setEnabled(false));
+  };
+  hideBeforeStart();
 
   return {
+    hideBeforeStart,
     update(elapsed, formation, reveal, tunnelTime) {
       const isClosing = tunnelTime >= 0;
       const closure = isClosing ? 1 - smoothstep(tunnelTime / RIFT_CLOSE_DURATION) : 1;

@@ -8,18 +8,16 @@ async function startExperience() {
   const canvas = document.getElementById("renderCanvas");
   const statusElement = document.getElementById("runtime-status");
   const enterVrButton = document.getElementById("enter-vr");
-  const startScreen = createExperienceStartScreen(canvas);
+  const startScreen = createExperienceStartScreen();
 
   const engine = createEngine(canvas);
   const scene = await createIdyllScene(engine, canvas);
   const removeResizeHandling = configureResizeHandling(engine);
 
-  // Rendering begins so the paused initial camera view can be captured, but
-  // the experience timeline itself remains gated until the explicit start.
+  // Rendering prepares the paused initial view, but the experience timeline
+  // itself remains gated until the explicit start.
   engine.runRenderLoop(() => scene.render());
   await scene.whenReadyAsync();
-  await new Promise((resolve) => window.requestAnimationFrame(resolve));
-  startScreen.captureInitialIdyll();
   setStatus(statusElement, "Idylle bereit. WebXR wird geprüft …");
 
   const xr = await initializeWebXR({

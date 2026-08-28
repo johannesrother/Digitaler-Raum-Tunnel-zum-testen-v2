@@ -30,7 +30,6 @@ body {
 }
 
 .experience-start-screen {
-  --idyll-start-image: none;
   position: fixed;
   inset: 0;
   z-index: 20;
@@ -39,7 +38,7 @@ body {
   overflow: hidden;
   color: #fff;
   background-color: #15202a;
-  background-image: linear-gradient(rgb(10 18 22 / 16%), rgb(10 18 22 / 30%)), var(--idyll-start-image);
+  background-image: linear-gradient(rgb(10 18 22 / 16%), rgb(10 18 22 / 30%)), url("./assets/ui/idyll-start.jpg");
   background-position: center;
   background-size: cover;
   opacity: 1;
@@ -52,10 +51,6 @@ body {
   content: "";
   background: rgb(11 19 22 / 14%);
   transition: background 0.4s ease;
-}
-
-.experience-start-screen--has-snapshot::before {
-  background: rgb(11 19 22 / 22%);
 }
 
 .experience-start-screen--leaving {
