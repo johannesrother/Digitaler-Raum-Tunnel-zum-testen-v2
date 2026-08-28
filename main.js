@@ -11,15 +11,60 @@ async function startExperience() {
   const enterVrButton = document.getElementById("enter-vr");
   const startScreen = createExperienceStartScreen();
   let scene = null;
-  const reexperienceButton = createReexperienceButton(() => {
-    scene.metadata.transition.reset();
+  const reexperienceState = {
+    experienceStarted: false,
+    hasEnteredWhiteRoom: false,
+    whiteRoomSoundStartedThisRun: false,
+    whiteRoomSoundEndedThisRun: false,
+    reexperienceScheduled: false,
+    reexperienceVisible: false,
+  };
+  const resetReexperienceState = () => {
+    Object.assign(reexperienceState, {
+      experienceStarted: false,
+      hasEnteredWhiteRoom: false,
+      whiteRoomSoundStartedThisRun: false,
+      whiteRoomSoundEndedThisRun: false,
+      reexperienceScheduled: false,
+      reexperienceVisible: false,
+    });
+  };
+  const startRun = ({ resetTransition = false } = {}) => {
+    reexperienceButton.hide();
+    resetReexperienceState();
+    if (resetTransition) {
+      scene.metadata.transition.reset();
+    }
+    reexperienceState.experienceStarted = true;
     scene.metadata.idyllSound.start();
     scene.metadata.transition.start();
+  };
+  const reexperienceButton = createReexperienceButton(() => {
+    startRun({ resetTransition: true });
   });
 
   const engine = createEngine(canvas);
   scene = await createIdyllScene(engine, canvas, {
-    onWhiteRoomSoundEnded: () => reexperienceButton.showAfterSilence(),
+    onWhiteRoomEntry: () => {
+      reexperienceState.hasEnteredWhiteRoom = true;
+    },
+    onWhiteRoomSoundStarted: () => {
+      if (reexperienceState.experienceStarted && reexperienceState.hasEnteredWhiteRoom) {
+        reexperienceState.whiteRoomSoundStartedThisRun = true;
+      }
+    },
+    onWhiteRoomSoundEnded: () => {
+      const canSchedule = reexperienceState.experienceStarted
+        && reexperienceState.hasEnteredWhiteRoom
+        && reexperienceState.whiteRoomSoundStartedThisRun
+        && !reexperienceState.whiteRoomSoundEndedThisRun
+        && !reexperienceState.reexperienceScheduled;
+      if (!canSchedule) return;
+      reexperienceState.whiteRoomSoundEndedThisRun = true;
+      reexperienceState.reexperienceScheduled = true;
+      reexperienceState.reexperienceVisible = true;
+      reexperienceButton.showAfterSilence();
+    },
   });
   const removeResizeHandling = configureResizeHandling(engine);
 
@@ -38,8 +83,7 @@ async function startExperience() {
   startScreen.setReady(() => {
     // This direct click is also the browser gesture for the existing HTML
     // audio elements. The timeline is reset and begins here at exactly t = 0.
-    scene.metadata.idyllSound.start();
-    scene.metadata.transition.start();
+    startRun();
   });
 
   window.addEventListener(

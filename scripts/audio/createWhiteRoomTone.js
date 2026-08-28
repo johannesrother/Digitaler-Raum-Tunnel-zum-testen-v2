@@ -61,10 +61,12 @@ export function createWhiteRoomTone({ onActivate, onEnded } = {}) {
         return;
       }
       activated = true;
-      onActivate?.();
       whiteRoomAudio.currentTime = 0;
       whiteRoomAudio.volume = fadeInDuration > 0 ? 0 : WHITE_ROOM_SOUND_VOLUME;
       whiteRoomAudio.play().then(() => {
+        // Report only an actual, successful playback start. The silent
+        // autoplay-unlock probe must never count as a White-Room sound run.
+        onActivate?.();
         if (fadeInDuration <= 0) return;
         const startedAt = performance.now();
         const update = () => {

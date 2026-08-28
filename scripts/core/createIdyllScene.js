@@ -12,7 +12,11 @@ import { createRiftSound } from "../audio/createRiftSound.js";
 import { createSuctionSound } from "../audio/createSuctionSound.js";
 
 /** Creates the static, standing-height idyll scene. WebXR is added separately. */
-export async function createIdyllScene(engine, canvas, { onWhiteRoomSoundEnded } = {}) {
+export async function createIdyllScene(
+  engine,
+  canvas,
+  { onWhiteRoomEntry, onWhiteRoomSoundStarted, onWhiteRoomSoundEnded } = {},
+) {
   const scene = new BABYLON.Scene(engine);
   scene.skipPointerMovePicking = true;
 
@@ -63,7 +67,10 @@ export async function createIdyllScene(engine, canvas, { onWhiteRoomSoundEnded }
   const riftSound = createRiftSound();
   const suctionSound = createSuctionSound();
   const tunnelSound = createTunnelSound();
-  const whiteRoomTone = createWhiteRoomTone({ onEnded: onWhiteRoomSoundEnded });
+  const whiteRoomTone = createWhiteRoomTone({
+    onActivate: onWhiteRoomSoundStarted,
+    onEnded: onWhiteRoomSoundEnded,
+  });
   const transition = createIdyllTunnelTransition(scene, {
     startPosition: dreamyIdyll.startPosition,
     entrance: environment.architecture.entrance,
@@ -80,6 +87,7 @@ export async function createIdyllScene(engine, canvas, { onWhiteRoomSoundEnded }
       tunnelSound.fadeTo(0.28, 8);
     },
     onWhiteRoomEntry: () => {
+      onWhiteRoomEntry?.();
       tunnelSound.fadeOutAndStop(2);
       suctionSound.fadeOutAndStop(2);
     },

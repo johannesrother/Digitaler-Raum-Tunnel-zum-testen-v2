@@ -123,6 +123,10 @@ body {
   transition: opacity 0.95s ease;
 }
 
+.reexperience-overlay[hidden] {
+  display: none;
+}
+
 .reexperience-overlay--visible {
   pointer-events: auto;
   opacity: 1;
