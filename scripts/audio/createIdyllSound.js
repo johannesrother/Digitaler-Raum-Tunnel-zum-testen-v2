@@ -16,6 +16,10 @@ export function createIdyllSound() {
     if (started) {
       return;
     }
+    // A prior idyll-to-rift fade reaches zero. Every run must restore the
+    // configured level before reusing this same HTMLAudioElement.
+    idyllAudio.volume = IDYLL_SOUND_VOLUME;
+    idyllAudio.currentTime = 0;
     idyllAudio.play().then(() => {
       started = true;
       removeStartListeners();
@@ -60,6 +64,7 @@ export function createIdyllSound() {
       }
       idyllAudio.pause();
       idyllAudio.currentTime = 0;
+      idyllAudio.volume = IDYLL_SOUND_VOLUME;
     },
     dispose() {
       this.stop();
