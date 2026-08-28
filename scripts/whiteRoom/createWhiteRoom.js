@@ -41,6 +41,12 @@ export function createWhiteRoom(scene, tunnelEnd, exitDirection) {
     activate() {
       this.preview(1);
     },
+    reset() {
+      voidMesh.setEnabled(false);
+      material.alpha = 0;
+      scene.clearColor = originalClearColor.clone();
+      scene.fogDensity = originalFogDensity;
+    },
     dispose() {
       scene.clearColor = originalClearColor;
       scene.fogDensity = originalFogDensity;

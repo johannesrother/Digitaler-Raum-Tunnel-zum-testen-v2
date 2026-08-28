@@ -69,6 +69,15 @@ export function createRiftSound() {
     update();
   };
 
+  const stop = () => {
+    if (fadeFrame !== null) window.cancelAnimationFrame(fadeFrame);
+    fadeFrame = null;
+    started = false;
+    riftAudio.pause();
+    riftAudio.currentTime = 0;
+    riftAudio.volume = RIFT_SOUND_VOLUME;
+  };
+
   return {
     start() {
       if (started) {
@@ -80,12 +89,10 @@ export function createRiftSound() {
       riftAudio.play().catch(() => { started = false; });
     },
     fadeOutAndStop,
+    stop,
     dispose() {
       removeUnlockListeners();
-      if (fadeFrame !== null) {
-        window.cancelAnimationFrame(fadeFrame);
-      }
-      riftAudio.pause();
+      stop();
       riftAudio.removeAttribute("src");
       riftAudio.load();
     },

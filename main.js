@@ -2,6 +2,7 @@ import { createEngine } from "./scripts/core/engine.js";
 import { createIdyllScene } from "./scripts/core/createIdyllScene.js";
 import { initializeWebXR } from "./scripts/core/initializeWebXR.js";
 import { createExperienceStartScreen } from "./scripts/ui/createExperienceStartScreen.js";
+import { createReexperienceButton } from "./scripts/ui/createReexperienceButton.js";
 import { configureResizeHandling, setStatus } from "./scripts/utils/dom.js";
 
 async function startExperience() {
@@ -9,9 +10,17 @@ async function startExperience() {
   const statusElement = document.getElementById("runtime-status");
   const enterVrButton = document.getElementById("enter-vr");
   const startScreen = createExperienceStartScreen();
+  let scene = null;
+  const reexperienceButton = createReexperienceButton(() => {
+    scene.metadata.transition.reset();
+    scene.metadata.idyllSound.start();
+    scene.metadata.transition.start();
+  });
 
   const engine = createEngine(canvas);
-  const scene = await createIdyllScene(engine, canvas);
+  scene = await createIdyllScene(engine, canvas, {
+    onWhiteRoomSoundEnded: () => reexperienceButton.showAfterSilence(),
+  });
   const removeResizeHandling = configureResizeHandling(engine);
 
   // Rendering prepares the paused initial view, but the experience timeline
@@ -45,6 +54,8 @@ async function startExperience() {
       scene.metadata.tunnelSound.dispose();
       scene.metadata.whiteRoomTone.dispose();
       scene.metadata.whiteRoom.dispose();
+      scene.metadata.dreamyIdyll.dispose();
+      reexperienceButton.dispose();
       scene.dispose();
       engine.dispose();
     },

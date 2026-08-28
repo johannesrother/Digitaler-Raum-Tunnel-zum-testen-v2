@@ -10,7 +10,6 @@ const RIFT_TUNNEL_REVEAL_START = 18.25;
 const RIFT_PULL_DURATION = 2.25;
 const TUNNEL_START = IDYLL_TRAVEL_DURATION + RIFT_PULL_DURATION;
 const WHITE_ROOM_ARRIVAL_DURATION = 1;
-const WHITE_ROOM_DURATION = 5;
 const WHITE_PREVIEW_START = 30;
 const TUNNEL_BLEND_DURATION = 2;
 const FINAL_PULL_START = 52;
@@ -56,7 +55,6 @@ export function createIdyllTunnelTransition(scene, options) {
   let xrCamera = null;
   let previousWorldHidden = false;
   let idyllHidden = false;
-  let whiteRoomFinished = false;
   let portalClosed = false;
   let tunnelEntryPrepared = false;
   let riftSoundStarted = false;
@@ -64,6 +62,15 @@ export function createIdyllTunnelTransition(scene, options) {
   let experienceStarted = false;
   let previousFrameTime = performance.now();
   const initialHeading = headingFrom(options.initialForward);
+  const initialWorldMeshStates = new Map(
+    options.idyllWorldMeshes.map((mesh) => [mesh, mesh.isEnabled()]),
+  );
+  const initialPreviousMeshStates = new Map(
+    options.previousWorldMeshes.map((mesh) => [mesh, mesh.isEnabled()]),
+  );
+  const initialPreviousLightStates = new Map(
+    options.previousWorldLights.map((light) => [light, light.isEnabled()]),
+  );
 
   // Keep the camera at the root origin. The root can now yaw along the
   // spline without orbiting a desktop camera around the world origin.
@@ -154,10 +161,6 @@ export function createIdyllTunnelTransition(scene, options) {
         isolatePreviousWorld(options);
         previousWorldHidden = true;
       }
-      if (!whiteRoomFinished && whiteElapsed >= WHITE_ROOM_DURATION) {
-        options.whiteRoomTone.deactivate();
-        whiteRoomFinished = true;
-      }
     }
 
     // The rendered stencil aperture is the only authoritative world boundary.
@@ -205,6 +208,34 @@ export function createIdyllTunnelTransition(scene, options) {
       }
       experienceStarted = true;
       elapsed = 0;
+      previousFrameTime = performance.now();
+      previousRiftEntryDistance = rift.entryPlaneDistance(
+        root.position,
+        (xrCamera ?? scene.activeCamera ?? options.desktopCamera)?.minZ ?? 0,
+      );
+    },
+    reset() {
+      // This returns the already loaded scene to its exact pre-start state;
+      // no browser reload or asset reconstruction is needed for a repeat run.
+      options.onExperienceReset?.();
+      elapsed = 0;
+      experienceStarted = false;
+      previousWorldHidden = false;
+      idyllHidden = false;
+      portalClosed = false;
+      tunnelEntryPrepared = false;
+      riftSoundStarted = false;
+      suctionSoundStarted = false;
+      options.whiteRoomActive = false;
+      options.whiteRoom.reset();
+      initialPreviousLightStates.forEach((enabled, light) => light.setEnabled(enabled));
+      initialPreviousMeshStates.forEach((enabled, mesh) => mesh.setEnabled(enabled));
+      initialWorldMeshStates.forEach((enabled, mesh) => mesh.setEnabled(enabled));
+      options.tunnel.reset();
+      tunnelWorld.reset();
+      rift.reset();
+      root.position.copyFrom(start);
+      root.rotation.set(0, 0, 0);
       previousFrameTime = performance.now();
       previousRiftEntryDistance = rift.entryPlaneDistance(
         root.position,
@@ -604,6 +635,12 @@ function createSpacetimeRift(scene, entrance, tunnelStart, tunnelMesh, idyllWorl
     apertureMask.mesh.setEnabled(false);
   };
 
+  const reset = () => {
+    portalMaskPermanentlyClosed = false;
+    setPortalMask(false);
+    hideBeforeStart();
+  };
+
   const setPoint = (positions, offset, x, y, depth) => {
     positions[offset] = center.x + lateral.x * x + forward.x * depth;
     positions[offset + 1] = center.y + y;
@@ -693,6 +730,7 @@ function createSpacetimeRift(scene, entrance, tunnelStart, tunnelMesh, idyllWorl
         || edgeHighlights.some((mesh) => mesh.isEnabled());
     },
     closePortalMask,
+    reset,
     entryPlaneDistance(position, nearClip = 0) {
       // The stencil mesh becomes invisible as soon as the camera's near plane
       // reaches it, not when the camera origin reaches it. Shift the logical
@@ -1649,6 +1687,7 @@ function createTunnelWorldGroup(scene, options) {
     .filter(Boolean);
   const allMeshes = [options.tunnel.mesh, ...entranceMeshes];
   const originalVisibility = new Map(allMeshes.map((mesh) => [mesh, mesh.visibility]));
+  const originalEnabled = new Map(allMeshes.map((mesh) => [mesh, mesh.isEnabled()]));
 
   const setEntranceEnabled = (enabled) => {
     entranceMeshes.forEach((mesh) => mesh.setEnabled(enabled));
@@ -1693,6 +1732,14 @@ function createTunnelWorldGroup(scene, options) {
       // later White-Room sightline.
       options.idyllWorldMeshes.forEach((mesh) => mesh.setEnabled(false));
       options.onIdyllHidden?.();
+    },
+    reset() {
+      allMeshes.forEach((mesh) => {
+        mesh.visibility = originalVisibility.get(mesh);
+        mesh.setEnabled(originalEnabled.get(mesh));
+      });
+      entrance.daylight?.setEnabled(false);
+      this.hide();
     },
   };
 }

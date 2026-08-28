@@ -5,7 +5,7 @@ const WHITE_ROOM_SOUND_URL = new URL(
 );
 
 /** Reuses the tunnel's simple global HTML-audio playback approach. */
-export function createWhiteRoomTone({ onActivate } = {}) {
+export function createWhiteRoomTone({ onActivate, onEnded } = {}) {
   const whiteRoomAudio = new Audio(WHITE_ROOM_SOUND_URL.href);
   whiteRoomAudio.preload = "auto";
   whiteRoomAudio.loop = false;
@@ -16,6 +16,12 @@ export function createWhiteRoomTone({ onActivate } = {}) {
   let unlocking = false;
   let activated = false;
   let fadeFrame = null;
+
+  const handleEnded = () => {
+    activated = false;
+    onEnded?.();
+  };
+  whiteRoomAudio.addEventListener("ended", handleEnded);
 
   const unlock = async () => {
     if (unlocked || unlocking) {
@@ -71,12 +77,16 @@ export function createWhiteRoomTone({ onActivate } = {}) {
     },
     deactivate() {
       if (fadeFrame !== null) window.cancelAnimationFrame(fadeFrame);
+      fadeFrame = null;
+      activated = false;
       whiteRoomAudio.pause();
       whiteRoomAudio.currentTime = 0;
+      whiteRoomAudio.volume = WHITE_ROOM_SOUND_VOLUME;
     },
     dispose() {
       removeUnlockListeners();
-      whiteRoomAudio.pause();
+      this.deactivate();
+      whiteRoomAudio.removeEventListener("ended", handleEnded);
       whiteRoomAudio.removeAttribute("src");
       whiteRoomAudio.load();
     },

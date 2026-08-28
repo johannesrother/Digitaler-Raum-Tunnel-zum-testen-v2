@@ -113,6 +113,12 @@ export async function createDreamyIdyll(scene, startPosition) {
     hide() {
       world.setEnabled(false);
       lights.forEach((light) => light.setEnabled(false));
+    },
+    show() {
+      world.setEnabled(true);
+      lights.forEach((light) => light.setEnabled(true));
+    },
+    dispose() {
       atmosphere.dispose();
     },
   };

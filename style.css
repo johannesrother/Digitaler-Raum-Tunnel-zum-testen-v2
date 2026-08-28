@@ -112,6 +112,22 @@ body {
   transform: translateY(-1px);
 }
 
+.reexperience-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 900;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.95s ease;
+}
+
+.reexperience-overlay--visible {
+  pointer-events: auto;
+  opacity: 1;
+}
+
 .start-experience-button:focus-visible {
   outline: 2px solid #fff;
   outline-offset: 4px;

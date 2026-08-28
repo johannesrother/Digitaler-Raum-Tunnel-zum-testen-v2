@@ -129,6 +129,15 @@ export function createOrganicTunnel(scene, options) {
         updateTunnelLights(lights, route, 0, 0);
       }
     },
+    reset() {
+      sequenceActive = false;
+      activeTime = 0;
+      impulse = 0;
+      nextImpulseAt = 12.7;
+      previousFrameTime = performance.now();
+      wallDeformation.update(0);
+      updateTunnelLights(lights, route, 0, 0);
+    },
     dispose() {
       scene.onBeforeRenderObservable.remove(observer);
       lights.points.forEach((light) => light.dispose());

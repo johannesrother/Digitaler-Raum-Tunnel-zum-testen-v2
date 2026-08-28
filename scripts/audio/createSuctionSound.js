@@ -33,6 +33,15 @@ export function createSuctionSound() {
     update();
   };
 
+  const stop = () => {
+    if (fadeFrame !== null) window.cancelAnimationFrame(fadeFrame);
+    fadeFrame = null;
+    started = false;
+    suctionAudio.pause();
+    suctionAudio.currentTime = 0;
+    suctionAudio.volume = SUCTION_SOUND_VOLUME;
+  };
+
   return {
     start() {
       if (started) return;
@@ -42,9 +51,9 @@ export function createSuctionSound() {
       suctionAudio.play().catch(() => { started = false; });
     },
     fadeOutAndStop,
+    stop,
     dispose() {
-      if (fadeFrame !== null) window.cancelAnimationFrame(fadeFrame);
-      suctionAudio.pause();
+      stop();
       suctionAudio.removeAttribute("src");
       suctionAudio.load();
     },
