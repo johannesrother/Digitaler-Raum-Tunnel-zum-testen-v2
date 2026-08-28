@@ -4,7 +4,7 @@ const DENSE_GRASS_ZONES = [
   { count: 25000, innerRadius: 22, outerRadius: 42 },
   { count: 15000, innerRadius: 42, outerRadius: 58 },
 ];
-const GRASS_SCALE_RANGE = [0.14, 0.2];
+const GRASS_SCALE_RANGE = [0.12, 0.17];
 const HOUSE_APPROACH_CLEARANCE = 1.15;
 const HOUSE_ENTRANCE_CLEARANCE = 2.1;
 const POLLEN_COUNT = 34;
@@ -438,10 +438,14 @@ function createInstanceGroup(scene, world, library, name, placement, startPositi
 
 function createDenseGrassField(library, startPosition, random, zones, scaleRange) {
   const mesh = library.meshes[0];
-  return createThinInstanceField(mesh, startPosition, random, zones, scaleRange, 0);
+  // The asset's origin sits slightly above its lowest vertices.  Use its real
+  // local bound, rather than a guessed offset, so every instance meets the
+  // same height function that generated the meadow beneath it.
+  const assetBottom = mesh.getBoundingInfo().boundingBox.minimum.y;
+  return createThinInstanceField(mesh, startPosition, random, zones, scaleRange, assetBottom);
 }
 
-function createThinInstanceField(mesh, startPosition, random, zones, scaleRange, yOffset) {
+function createThinInstanceField(mesh, startPosition, random, zones, scaleRange, assetBottom) {
   const count = zones.reduce((total, zone) => total + zone.count, 0);
   const matrices = new Float32Array(count * 16);
   const scaling = new BABYLON.Vector3();
@@ -457,15 +461,10 @@ function createThinInstanceField(mesh, startPosition, random, zones, scaleRange,
       scaling.setAll(scale);
       position.set(
         startPosition.x + point.x,
-        getMeadowHeight(startPosition.x + point.x, startPosition.z + point.z, startPosition) + yOffset * scale,
+        getMeadowHeight(startPosition.x + point.x, startPosition.z + point.z, startPosition) - assetBottom * scale,
         startPosition.z + point.z,
       );
-      BABYLON.Quaternion.RotationYawPitchRollToRef(
-        random() * Math.PI * 2,
-        (random() - 0.5) * 0.08,
-        (random() - 0.5) * 0.08,
-        rotation,
-      );
+      BABYLON.Quaternion.RotationYawPitchRollToRef(random() * Math.PI * 2, 0, 0, rotation);
       BABYLON.Matrix.ComposeToRef(scaling, rotation, position, matrix);
       matrix.copyToArray(matrices, index * 16);
       index += 1;
