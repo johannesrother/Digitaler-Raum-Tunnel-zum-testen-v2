@@ -5,8 +5,10 @@ const DENSE_GRASS_ZONES = [
   { count: 15000, innerRadius: 42, outerRadius: 58 },
 ];
 const GRASS_SCALE_RANGE = [0.12, 0.17];
-const HOUSE_APPROACH_CLEARANCE = 1.15;
 const HOUSE_ENTRANCE_CLEARANCE = 2.1;
+const HOUSE_PATH_GRASS_CLEARANCE = 1.6;
+const RIFT_GRASS_EXCLUSION_RADIUS = 2.35;
+const MIN_GRASS_GROUND_NORMAL_Y = 0.96;
 const POLLEN_COUNT = 34;
 const PACK_ROOT = "./assets/idylle%20pack/glTF/";
 const TOON_SKYDOME_ROOT = "./assets/idylle/";
@@ -51,7 +53,7 @@ export async function createDreamyIdyll(scene, startPosition) {
   const house = await createHouseTarget(scene, world, startPosition);
   const lights = createDreamyLighting(scene);
   const libraries = await loadNatureLibraries(scene, world);
-  const vegetation = placeNature(scene, world, libraries, startPosition, house);
+  const vegetation = placeNature(scene, world, libraries, startPosition, house, meadow);
   const atmosphere = createAtmosphere(scene, world, startPosition, vegetation.swayAnchors, sky);
 
   return {
@@ -129,6 +131,7 @@ function createRollingMeadow(scene, world, startPosition) {
   material.environmentIntensity = 0.16;
   meadow.material = material;
   meadow.parent = world;
+  meadow.metadata = { ...(meadow.metadata ?? {}), grassReceiver: true };
   meadow.isPickable = false;
   meadow.receiveShadows = true;
   return meadow;
@@ -343,7 +346,7 @@ async function loadLibrary(scene, world, name) {
   return { meshes };
 }
 
-function placeNature(scene, world, libraries, startPosition, house) {
+function placeNature(scene, world, libraries, startPosition, house, meadow) {
   const random = createRandom(7391);
   const swayAnchors = [];
   const entries = [];
@@ -427,6 +430,7 @@ function placeNature(scene, world, libraries, startPosition, house) {
     DENSE_GRASS_ZONES,
     GRASS_SCALE_RANGE,
     grassExclusions,
+    meadow,
   );
   return { counts, swayAnchors, entries };
 }
@@ -446,16 +450,16 @@ function createInstanceGroup(scene, world, library, name, placement, startPositi
   return anchor;
 }
 
-function createDenseGrassField(library, startPosition, random, zones, scaleRange, exclusions) {
+function createDenseGrassField(library, startPosition, random, zones, scaleRange, exclusions, meadow) {
   const mesh = library.meshes[0];
   // The asset's origin sits slightly above its lowest vertices.  Use its real
   // local bound, rather than a guessed offset, so every instance meets the
   // same height function that generated the meadow beneath it.
   const assetBottom = mesh.getBoundingInfo().boundingBox.minimum.y;
-  return createThinInstanceField(mesh, startPosition, random, zones, scaleRange, assetBottom, exclusions);
+  return createThinInstanceField(mesh, startPosition, random, zones, scaleRange, assetBottom, exclusions, meadow);
 }
 
-function createThinInstanceField(mesh, startPosition, random, zones, scaleRange, assetBottom, exclusions) {
+function createThinInstanceField(mesh, startPosition, random, zones, scaleRange, assetBottom, exclusions, meadow) {
   const count = zones.reduce((total, zone) => total + zone.count, 0);
   const matrices = new Float32Array(count * 16);
   const scaling = new BABYLON.Vector3();
@@ -466,7 +470,7 @@ function createThinInstanceField(mesh, startPosition, random, zones, scaleRange,
 
   zones.forEach((zone) => {
     for (let zoneIndex = 0; zoneIndex < zone.count; zoneIndex += 1) {
-      const point = randomMeadowPoint(random, zone.innerRadius, zone.outerRadius, startPosition, exclusions);
+      const point = randomMeadowPoint(random, zone.innerRadius, zone.outerRadius, startPosition, exclusions, meadow);
       const scale = BABYLON.Scalar.Lerp(scaleRange[0], scaleRange[1], random());
       scaling.setAll(scale);
       position.set(
@@ -492,28 +496,23 @@ function createThinInstanceField(mesh, startPosition, random, zones, scaleRange,
 function createGrassExclusions(house, entries) {
   const exclusions = [
     createBoundsExclusion(house.bounds.minimumWorld, house.bounds.maximumWorld, 0.5, "house"),
+    {
+      type: "circle",
+      x: house.entrance.center.x,
+      z: house.entrance.center.z,
+      radius: RIFT_GRASS_EXCLUSION_RADIUS,
+      label: "house-door-and-rift",
+    },
   ];
 
   entries.forEach(({ anchor, kind, prefix }) => {
     const bounds = getInstanceBounds(anchor);
     if (!bounds) return;
 
-    if (kind === "trees") {
-      // A tree's canopy is much wider than its trunk.  Keep only its real
-      // ground footprint clear, preserving the meadow beneath the branches.
-      const width = bounds.maximum.x - bounds.minimum.x;
-      const depth = bounds.maximum.z - bounds.minimum.z;
-      exclusions.push({
-        type: "circle",
-        x: anchor.getAbsolutePosition().x,
-        z: anchor.getAbsolutePosition().z,
-        radius: BABYLON.Scalar.Clamp(Math.min(width, depth) * 0.13 + 0.1, 0.25, 0.72),
-        label: prefix,
-      });
-      return;
-    }
-
-    const padding = kind === "rocks" ? 0.26 : kind === "bushes" ? 0.2 : 0.12;
+    // Every imported prop is a blocker.  Tree crowns intentionally use their
+    // full projected bound as well, which prevents a blade from appearing to
+    // pierce a trunk, branch, canopy, roof, wall, or rock edge.
+    const padding = kind === "rocks" ? 0.3 : kind === "trees" ? 0.28 : kind === "bushes" ? 0.22 : 0.14;
     exclusions.push(createBoundsExclusion(bounds.minimum, bounds.maximum, padding, prefix));
   });
 
@@ -521,6 +520,7 @@ function createGrassExclusions(house, entries) {
 }
 
 function getInstanceBounds(anchor) {
+  anchor.computeWorldMatrix(true);
   const meshes = anchor.getChildMeshes(false);
   if (meshes.length === 0) return null;
 
@@ -589,7 +589,7 @@ function randomPoint(random, inner, outer) {
   return { x: Math.cos(angle) * radius, z: Math.sin(angle) * radius };
 }
 
-function randomMeadowPoint(random, inner, outer, startPosition, exclusions) {
+function randomMeadowPoint(random, inner, outer, startPosition, exclusions, meadow) {
   const entrance = {
     x: HOUSE_OFFSET.x,
     z: HOUSE_OFFSET.z - HOUSE_SCALE * 0.7114279866218567,
@@ -597,7 +597,8 @@ function randomMeadowPoint(random, inner, outer, startPosition, exclusions) {
   for (let attempt = 0; attempt < 256; attempt += 1) {
     const point = randomPoint(random, inner, outer);
     if (
-      distanceToSegment(point, { x: 0, z: 0 }, entrance) >= HOUSE_APPROACH_CLEARANCE
+      isValidGrassReceiver(point, startPosition, meadow)
+      && distanceToSegment(point, { x: 0, z: 0 }, entrance) >= HOUSE_PATH_GRASS_CLEARANCE
       && Math.hypot(point.x - entrance.x, point.z - entrance.z) >= HOUSE_ENTRANCE_CLEARANCE
       && !isInsideGrassExclusion(startPosition.x + point.x, startPosition.z + point.z, exclusions)
     ) {
@@ -605,6 +606,35 @@ function randomMeadowPoint(random, inner, outer, startPosition, exclusions) {
     }
   }
   throw new Error("Unable to place a grass instance outside its protected scene zones.");
+}
+
+function isValidGrassReceiver(point, startPosition, meadow) {
+  // `dreamy-rolling-meadow` is the sole grass receiver.  Its surface was
+  // generated directly from getMeadowHeight(), so this analytic evaluation
+  // is exact to the ground mesh without raycasting arbitrary imported GLBs.
+  if (!meadow.metadata?.grassReceiver) return false;
+
+  const distance = Math.hypot(point.x, point.z);
+  const angle = Math.atan2(point.z, point.x);
+  const meadowEdge = MEADOW_RADIUS
+    * (1 + Math.sin(angle * 5.0) * 0.025 + Math.sin(angle * 9.0 + 0.7) * 0.014);
+  if (distance > meadowEdge - 0.08) return false;
+
+  const normal = getMeadowSurfaceNormal(startPosition.x + point.x, startPosition.z + point.z, startPosition);
+  return normal.y >= MIN_GRASS_GROUND_NORMAL_Y;
+}
+
+function getMeadowSurfaceNormal(x, z, startPosition) {
+  const sampleDistance = 0.08;
+  const heightX = getMeadowHeight(x + sampleDistance, z, startPosition)
+    - getMeadowHeight(x - sampleDistance, z, startPosition);
+  const heightZ = getMeadowHeight(x, z + sampleDistance, startPosition)
+    - getMeadowHeight(x, z - sampleDistance, startPosition);
+  return new BABYLON.Vector3(
+    -heightX / (sampleDistance * 2),
+    1,
+    -heightZ / (sampleDistance * 2),
+  ).normalize();
 }
 
 function isInsideGrassExclusion(x, z, exclusions) {
