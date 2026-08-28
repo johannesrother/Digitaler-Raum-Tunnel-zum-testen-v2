@@ -11,7 +11,9 @@ const HORIZON_HILLS_ROOT = "./assets/idylle/";
 const HORIZON_HILLS_FILE = "hügel.glb";
 const HOUSE_ROOT = "./assets/idylle/";
 const HOUSE_FILE = "Haus.glb";
-const HOUSE_SCALE = 4.6;
+// The source model is 0.94 units high.  At 6.8× this yields a 6.4 m house
+// with an approximately 2.1 m entrance, matching the visitor eye height.
+const HOUSE_SCALE = 6.8;
 const HOUSE_OFFSET = new BABYLON.Vector3(-9, 0, 20.7);
 // `Haus.glb` has one combined mesh (`output_unwrapped`), so the doorway is not
 // a separately addressable node.  Its visible entrance is on the source +Z
