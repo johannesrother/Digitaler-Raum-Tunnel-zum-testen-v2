@@ -6,8 +6,8 @@ const DENSE_GRASS_ZONES = [
 ];
 const GRASS_SCALE_RANGE = [0.12, 0.17];
 const HOUSE_ENTRANCE_CLEARANCE = 2.1;
-const HOUSE_PATH_GRASS_CLEARANCE = 1.6;
-const RIFT_GRASS_EXCLUSION_RADIUS = 2.35;
+const HOUSE_PATH_GRASS_CLEARANCE = 0.75;
+const RIFT_GRASS_EXCLUSION_RADIUS = 1.45;
 const MIN_GRASS_GROUND_NORMAL_Y = 0.96;
 const POLLEN_COUNT = 34;
 const PACK_ROOT = "./assets/idylle%20pack/glTF/";
@@ -495,7 +495,7 @@ function createThinInstanceField(mesh, startPosition, random, zones, scaleRange,
 
 function createGrassExclusions(house, entries) {
   const exclusions = [
-    createBoundsExclusion(house.bounds.minimumWorld, house.bounds.maximumWorld, 0.5, "house"),
+    createMeshFootprintExclusion([house.mesh], "house-foundation", 0.4, 0.4),
     {
       type: "circle",
       x: house.entrance.center.x,
@@ -506,44 +506,66 @@ function createGrassExclusions(house, entries) {
   ];
 
   entries.forEach(({ anchor, kind, prefix }) => {
-    const bounds = getInstanceBounds(anchor);
-    if (!bounds) return;
-
-    // Every imported prop is a blocker.  Tree crowns intentionally use their
-    // full projected bound as well, which prevents a blade from appearing to
-    // pierce a trunk, branch, canopy, roof, wall, or rock edge.
-    const padding = kind === "rocks" ? 0.3 : kind === "trees" ? 0.28 : kind === "bushes" ? 0.22 : 0.14;
-    exclusions.push(createBoundsExclusion(bounds.minimum, bounds.maximum, padding, prefix));
+    // Only the lower geometry defines a footprint.  This keeps grass right
+    // up to objects while excluding their actual grounded contour rather than
+    // creating an empty rectangle from a roof or a tree crown.
+    const [groundBand, margin] = kind === "trees"
+      ? [0.26, 0.18]
+      : kind === "rocks"
+        ? [0.3, 0.18]
+        : kind === "bushes"
+          ? [0.18, 0.1]
+          : [0.12, 0.06];
+    exclusions.push(createMeshFootprintExclusion(anchor.getChildMeshes(false), prefix, groundBand, margin));
   });
 
   return exclusions.filter(Boolean);
 }
 
-function getInstanceBounds(anchor) {
-  anchor.computeWorldMatrix(true);
-  const meshes = anchor.getChildMeshes(false);
-  if (meshes.length === 0) return null;
+function createMeshFootprintExclusion(meshes, label, groundBand, margin) {
+  const renderedMeshes = meshes.filter((mesh) => mesh.getTotalVertices() > 0);
+  if (renderedMeshes.length === 0) return null;
 
-  const minimum = new BABYLON.Vector3(Infinity, Infinity, Infinity);
-  const maximum = new BABYLON.Vector3(-Infinity, -Infinity, -Infinity);
-  meshes.forEach((mesh) => {
-    mesh.computeWorldMatrix(true);
-    const bounds = mesh.getBoundingInfo().boundingBox;
-    minimum.minimizeInPlace(bounds.minimumWorld);
-    maximum.maximizeInPlace(bounds.maximumWorld);
+  renderedMeshes.forEach((mesh) => mesh.computeWorldMatrix(true));
+  const groundY = Math.min(...renderedMeshes.map((mesh) => mesh.getBoundingInfo().boundingBox.minimumWorld.y));
+  const points = [];
+  renderedMeshes.forEach((mesh) => {
+    const positions = mesh.getVerticesData(BABYLON.VertexBuffer.PositionKind);
+    if (!positions) return;
+    const worldMatrix = mesh.getWorldMatrix();
+    for (let index = 0; index < positions.length; index += 3) {
+      const worldPoint = BABYLON.Vector3.TransformCoordinates(
+        BABYLON.TmpVectors.Vector3[0].set(positions[index], positions[index + 1], positions[index + 2]),
+        worldMatrix,
+      );
+      if (worldPoint.y <= groundY + groundBand) points.push({ x: worldPoint.x, z: worldPoint.z });
+    }
   });
-  return { minimum, maximum };
+
+  const outline = createConvexHull(points);
+  if (outline.length < 3) return null;
+  return { type: "footprint", outline, margin, label };
 }
 
-function createBoundsExclusion(minimum, maximum, padding, label) {
-  return {
-    type: "bounds",
-    minX: minimum.x - padding,
-    maxX: maximum.x + padding,
-    minZ: minimum.z - padding,
-    maxZ: maximum.z + padding,
-    label,
-  };
+function createConvexHull(points) {
+  const unique = [...new Map(points.map((point) => [`${point.x.toFixed(4)}:${point.z.toFixed(4)}`, point])).values()];
+  if (unique.length < 3) return unique;
+  unique.sort((a, b) => a.x - b.x || a.z - b.z);
+  const cross = (origin, first, second) => (first.x - origin.x) * (second.z - origin.z)
+    - (first.z - origin.z) * (second.x - origin.x);
+  const lower = [];
+  unique.forEach((point) => {
+    while (lower.length >= 2 && cross(lower.at(-2), lower.at(-1), point) <= 0) lower.pop();
+    lower.push(point);
+  });
+  const upper = [];
+  [...unique].reverse().forEach((point) => {
+    while (upper.length >= 2 && cross(upper.at(-2), upper.at(-1), point) <= 0) upper.pop();
+    upper.push(point);
+  });
+  lower.pop();
+  upper.pop();
+  return lower.concat(upper);
 }
 
 function createAtmosphere(scene, world, startPosition, swayAnchors, sky) {
@@ -642,8 +664,21 @@ function isInsideGrassExclusion(x, z, exclusions) {
     if (zone.type === "circle") {
       return Math.hypot(x - zone.x, z - zone.z) <= zone.radius;
     }
-    return x >= zone.minX && x <= zone.maxX && z >= zone.minZ && z <= zone.maxZ;
+    return isInsideFootprint(x, z, zone);
   });
+}
+
+function isInsideFootprint(x, z, zone) {
+  let inside = false;
+  for (let index = 0, previous = zone.outline.length - 1; index < zone.outline.length; previous = index, index += 1) {
+    const current = zone.outline[index];
+    const prior = zone.outline[previous];
+    if ((current.z > z) !== (prior.z > z) && x < (prior.x - current.x) * (z - current.z) / (prior.z - current.z) + current.x) {
+      inside = !inside;
+    }
+    if (distanceToSegment({ x, z }, prior, current) <= zone.margin) return true;
+  }
+  return inside;
 }
 
 function distanceToSegment(point, start, end) {
