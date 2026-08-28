@@ -9,6 +9,7 @@ const HOUSE_ENTRANCE_CLEARANCE = 2.1;
 const HOUSE_PATH_GRASS_CLEARANCE = 0.75;
 const RIFT_GRASS_EXCLUSION_RADIUS = 1.45;
 const MIN_GRASS_GROUND_NORMAL_Y = 0.96;
+const GRASS_GROUND_OFFSET = 0.002;
 const POLLEN_COUNT = 34;
 const PACK_ROOT = "./assets/idylle%20pack/glTF/";
 const TOON_SKYDOME_ROOT = "./assets/idylle/";
@@ -475,7 +476,10 @@ function createThinInstanceField(mesh, startPosition, random, zones, scaleRange,
       scaling.setAll(scale);
       position.set(
         startPosition.x + point.x,
-        getMeadowHeight(startPosition.x + point.x, startPosition.z + point.z, startPosition) - assetBottom * scale,
+        // getMeadowHeight is the exact height sampler used while constructing
+        // dreamy-rolling-meadow, so this is a terrain hit on the only valid
+        // receiver without testing arbitrary imported scene geometry.
+        getMeadowHeight(startPosition.x + point.x, startPosition.z + point.z, startPosition) - assetBottom * scale + GRASS_GROUND_OFFSET,
         startPosition.z + point.z,
       );
       BABYLON.Quaternion.RotationYawPitchRollToRef(random() * Math.PI * 2, 0, 0, rotation);
@@ -495,7 +499,8 @@ function createThinInstanceField(mesh, startPosition, random, zones, scaleRange,
 
 function createGrassExclusions(house, entries) {
   const exclusions = [
-    createMeshFootprintExclusion([house.mesh], "house-foundation", 0.4, 0.4),
+    createMeshFootprintExclusion([house.mesh], "house-foundation", 0.4, 0.32),
+    createFrontYardExclusion(house.entrance),
     {
       type: "circle",
       x: house.entrance.center.x,
@@ -510,16 +515,39 @@ function createGrassExclusions(house, entries) {
     // up to objects while excluding their actual grounded contour rather than
     // creating an empty rectangle from a roof or a tree crown.
     const [groundBand, margin] = kind === "trees"
-      ? [0.26, 0.18]
+      ? [0.26, 0.15]
       : kind === "rocks"
-        ? [0.3, 0.18]
+        ? [0.3, 0.13]
         : kind === "bushes"
-          ? [0.18, 0.1]
-          : [0.12, 0.06];
+          ? [0.18, 0.08]
+          : [0.12, 0.04];
     exclusions.push(createMeshFootprintExclusion(anchor.getChildMeshes(false), prefix, groundBand, margin));
   });
 
   return exclusions.filter(Boolean);
+}
+
+function createFrontYardExclusion(entrance) {
+  const outward = entrance.forward.negate();
+  const makePoint = (forwardDistance, lateralDistance) => {
+    const point = entrance.center
+      .add(outward.scale(forwardDistance))
+      .add(entrance.lateral.scale(lateralDistance));
+    return { x: point.x, z: point.z };
+  };
+  // This is a door-aligned forecourt, not an enlarged house bound: it keeps
+  // the porch, Rift, and immediate access clear while meadow resumes at the edge.
+  return {
+    type: "footprint",
+    outline: [
+      makePoint(-0.08, -1.65),
+      makePoint(-0.08, 1.65),
+      makePoint(3.0, 2.0),
+      makePoint(3.0, -2.0),
+    ],
+    margin: 0.05,
+    label: "house-front-yard",
+  };
 }
 
 function createMeshFootprintExclusion(meshes, label, groundBand, margin) {
