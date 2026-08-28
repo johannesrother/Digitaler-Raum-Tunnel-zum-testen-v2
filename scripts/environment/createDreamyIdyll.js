@@ -31,16 +31,15 @@ const HOUSE_DOOR_LOCAL_NORMAL = new BABYLON.Vector3(0, 0, 1);
 const EMBEDDED_GRASS_ROOT = "./assets/idylle/";
 const EMBEDDED_GRASS_FILE = "Gras.glb";
 // Gras.glb spans local Y -0.1469…0.1531. Its square plate's upper surface
-// was measured at about -0.140, so this keeps the plate 1 cm below the meadow.
+// was measured at about -0.140; keep that entire surface 4 cm below meadow.
 const EMBEDDED_GRASS_PLATE_TOP_Y = -0.14;
-const EMBEDDED_GRASS_PLATE_BURY = 0.01;
-const EMBEDDED_GRASS_PATCHES = [
-  { x: -16, z: -18, scale: 1.02, rotation: 0.62 },
-  { x: 12, z: -14, scale: 0.96, rotation: 2.18 },
-  { x: 15, z: 14, scale: 1.08, rotation: 4.31 },
-  { x: 20, z: 22, scale: 0.98, rotation: 1.24 },
-  { x: -20, z: 21, scale: 1.04, rotation: 5.15 },
+const EMBEDDED_GRASS_PLATE_BURY = 0.04;
+const EMBEDDED_GRASS_CLUSTER_CENTERS = [
+  [-26, -18], [17, -17], [-29, 14], [22, 16],
+  [4, 32], [-10, -35], [32, 0],
 ];
+const EMBEDDED_GRASS_PATCHES_PER_CLUSTER = 4;
+const EMBEDDED_GRASS_PATCH_RADIUS = 1.15;
 
 const HORIZON_HILL_LAYOUT = [
   { angle: 0.08, radius: 134, scale: [31, 15, 22], yaw: -0.64 },
@@ -69,7 +68,7 @@ export async function createDreamyIdyll(scene, startPosition) {
   const libraries = await loadNatureLibraries(scene, world);
   const vegetation = placeNature(scene, world, libraries, startPosition, house, meadow);
   vegetation.buildGrass();
-  await createEmbeddedGrassPatches(scene, world, startPosition);
+  await createEmbeddedGrassPatches(scene, world, startPosition, house, vegetation.entries);
   const atmosphere = createAtmosphere(scene, world, startPosition, vegetation.swayAnchors, sky);
 
   return {
@@ -98,7 +97,7 @@ export async function createDreamyIdyll(scene, startPosition) {
   };
 }
 
-async function createEmbeddedGrassPatches(scene, world, startPosition) {
+async function createEmbeddedGrassPatches(scene, world, startPosition, house, vegetationEntries) {
   const container = await BABYLON.SceneLoader.LoadAssetContainerAsync(
     EMBEDDED_GRASS_ROOT,
     EMBEDDED_GRASS_FILE,
@@ -123,7 +122,8 @@ async function createEmbeddedGrassPatches(scene, world, startPosition) {
   source.receiveShadows = false;
   if (source.material) source.material.backFaceCulling = false;
 
-  EMBEDDED_GRASS_PATCHES.forEach((patch, index) => {
+  const patches = createEmbeddedGrassPatchLayout(startPosition, house, vegetationEntries);
+  patches.forEach((patch, index) => {
     const instance = source.createInstance(`dreamy-embedded-grass-patch-${index + 1}`);
     const groundY = getMeadowHeight(startPosition.x + patch.x, startPosition.z + patch.z, startPosition);
     instance.parent = world;
@@ -137,6 +137,54 @@ async function createEmbeddedGrassPatches(scene, world, startPosition) {
     instance.isPickable = false;
     instance.receiveShadows = false;
   });
+}
+
+function createEmbeddedGrassPatchLayout(startPosition, house, vegetationEntries) {
+  const random = createRandom(28471);
+  const exclusions = createGrassExclusions(house, vegetationEntries);
+  const patches = [];
+  EMBEDDED_GRASS_CLUSTER_CENTERS.forEach(([centerX, centerZ]) => {
+    let placed = 0;
+    let attempts = 0;
+    while (placed < EMBEDDED_GRASS_PATCHES_PER_CLUSTER && attempts < 96) {
+      attempts += 1;
+      const angle = random() * Math.PI * 2;
+      const radius = 1.6 + random() * 3.4;
+      const scale = BABYLON.Scalar.Lerp(0.94, 1.08, random());
+      const patch = {
+        x: centerX + Math.cos(angle) * radius,
+        z: centerZ + Math.sin(angle) * radius,
+        scale,
+        rotation: random() * Math.PI * 2,
+      };
+      if (!isEmbeddedGrassPatchClear(patch, startPosition, house, exclusions)) continue;
+      patches.push(patch);
+      placed += 1;
+    }
+  });
+  return patches;
+}
+
+function isEmbeddedGrassPatchClear(patch, startPosition, house, exclusions) {
+  const radius = EMBEDDED_GRASS_PATCH_RADIUS * patch.scale;
+  const worldX = startPosition.x + patch.x;
+  const worldZ = startPosition.z + patch.z;
+  const perimeter = [
+    [0, 0], [radius, 0], [-radius, 0], [0, radius], [0, -radius],
+    [radius * 0.72, radius * 0.72], [radius * 0.72, -radius * 0.72],
+    [-radius * 0.72, radius * 0.72], [-radius * 0.72, -radius * 0.72],
+  ];
+  const entrance = {
+    x: HOUSE_OFFSET.x,
+    z: HOUSE_OFFSET.z - HOUSE_SCALE * 0.7114279866218567,
+  };
+  return perimeter.every(([offsetX, offsetZ]) => !isInsideGrassExclusion(
+    worldX + offsetX,
+    worldZ + offsetZ,
+    exclusions,
+  ))
+    && distanceToSegment(patch, { x: 0, z: 0 }, entrance) >= HOUSE_PATH_GRASS_CLEARANCE + radius
+    && Math.hypot(patch.x - entrance.x, patch.z - entrance.z) >= HOUSE_ENTRANCE_CLEARANCE + radius;
 }
 
 function createRollingMeadow(scene, world, startPosition) {
