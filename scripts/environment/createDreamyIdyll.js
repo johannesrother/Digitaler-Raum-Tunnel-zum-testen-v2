@@ -28,6 +28,19 @@ const HOUSE_OFFSET = new BABYLON.Vector3(-9, 0, 20.7);
 // facade. Rotate that facade toward the visitor, who approaches from world -Z.
 const HOUSE_ROTATION_Y = Math.PI;
 const HOUSE_DOOR_LOCAL_NORMAL = new BABYLON.Vector3(0, 0, 1);
+const EMBEDDED_GRASS_ROOT = "./assets/idylle/";
+const EMBEDDED_GRASS_FILE = "Gras.glb";
+// Gras.glb spans local Y -0.1469…0.1531. Its square plate's upper surface
+// was measured at about -0.140, so this keeps the plate 1 cm below the meadow.
+const EMBEDDED_GRASS_PLATE_TOP_Y = -0.14;
+const EMBEDDED_GRASS_PLATE_BURY = 0.01;
+const EMBEDDED_GRASS_PATCHES = [
+  { x: -16, z: -18, scale: 1.02, rotation: 0.62 },
+  { x: 12, z: -14, scale: 0.96, rotation: 2.18 },
+  { x: 15, z: 14, scale: 1.08, rotation: 4.31 },
+  { x: 20, z: 22, scale: 0.98, rotation: 1.24 },
+  { x: -20, z: 21, scale: 1.04, rotation: 5.15 },
+];
 
 const HORIZON_HILL_LAYOUT = [
   { angle: 0.08, radius: 134, scale: [31, 15, 22], yaw: -0.64 },
@@ -56,6 +69,7 @@ export async function createDreamyIdyll(scene, startPosition) {
   const libraries = await loadNatureLibraries(scene, world);
   const vegetation = placeNature(scene, world, libraries, startPosition, house, meadow);
   vegetation.buildGrass();
+  await createEmbeddedGrassPatches(scene, world, startPosition);
   const atmosphere = createAtmosphere(scene, world, startPosition, vegetation.swayAnchors, sky);
 
   return {
@@ -82,6 +96,47 @@ export async function createDreamyIdyll(scene, startPosition) {
       atmosphere.dispose();
     },
   };
+}
+
+async function createEmbeddedGrassPatches(scene, world, startPosition) {
+  const container = await BABYLON.SceneLoader.LoadAssetContainerAsync(
+    EMBEDDED_GRASS_ROOT,
+    EMBEDDED_GRASS_FILE,
+    scene,
+  );
+  container.lights.forEach((light) => light.dispose());
+  container.cameras.forEach((camera) => camera.dispose());
+  container.animationGroups.forEach((group) => group.stop());
+  container.addAllToScene();
+  container.rootNodes.forEach((root) => {
+    root.parent = world;
+    root.position.set(0, 0, 0);
+    root.scaling.set(1, 1, 1);
+    root.rotation.set(0, 0, 0);
+    root.rotationQuaternion = null;
+  });
+
+  const source = container.meshes.find((mesh) => mesh.getTotalVertices() > 0);
+  if (!source) throw new Error("Gras.glb did not contain a renderable vegetation mesh.");
+  source.isVisible = false;
+  source.isPickable = false;
+  source.receiveShadows = false;
+  if (source.material) source.material.backFaceCulling = false;
+
+  EMBEDDED_GRASS_PATCHES.forEach((patch, index) => {
+    const instance = source.createInstance(`dreamy-embedded-grass-patch-${index + 1}`);
+    const groundY = getMeadowHeight(startPosition.x + patch.x, startPosition.z + patch.z, startPosition);
+    instance.parent = world;
+    instance.position.set(
+      startPosition.x + patch.x,
+      groundY - EMBEDDED_GRASS_PLATE_TOP_Y * patch.scale - EMBEDDED_GRASS_PLATE_BURY,
+      startPosition.z + patch.z,
+    );
+    instance.scaling.setAll(patch.scale);
+    instance.rotation.y = patch.rotation;
+    instance.isPickable = false;
+    instance.receiveShadows = false;
+  });
 }
 
 function createRollingMeadow(scene, world, startPosition) {
