@@ -2,7 +2,6 @@ import {
   TUNNEL_DURATION,
   getTunnelDiameter,
   getTunnelLook,
-  getTunnelPhase,
   getTunnelTwitchInterval,
 } from "./tunnelConfig.js";
 
@@ -343,13 +342,13 @@ function getLocalContraction(progress, angle, targetIndex) {
 }
 
 function getJourneyDeformationStrength(time) {
-  const arrival = smoothstep((time - 4) / 16);
-  const compression = smoothstep((time - 18) / 34);
-  const finalConstriction = smoothstep((time - 50) / 10);
+  const arrival = smoothstep((time - 7) / 16);
+  const compression = smoothstep((time - 17) / 31);
+  const finalConstriction = smoothstep((time - 43) / 15);
   const release = 1 - smoothstep((time - 58.6) / 1.4);
-  // The final wave presses forward through the funnel, then vanishes as the
-  // visitor crosses into the White Room.
-  return (0.42 + arrival * 0.25 + compression * 0.24 + finalConstriction * 0.18) * release;
+  // The existing pressure fields begin almost imperceptibly at the portal,
+  // then gather strength as the otherwise unchanged shell narrows.
+  return (0.24 + arrival * 0.24 + compression * 0.31 + finalConstriction * 0.21) * release;
 }
 
 function getPressureWaveInfluence(time, targetIndex) {
@@ -365,8 +364,13 @@ function getPressureWaveInfluence(time, targetIndex) {
   const exitBoundWave = 0.08 + BABYLON.Scalar.Clamp((time - 50) / 10, 0, 1) * 0.8;
   const expulsionPressure = circularBell(targetCenter, exitBoundWave, 0.15) * finalPush * 1.28;
   const breath = 0.06 + 0.06 * (0.5 + 0.5 * Math.sin(time * (0.31 + targetIndex * 0.037) + targetIndex * 1.83));
-  const lateIntensity = 0.66 + smoothstep((time - 16) / 35) * 0.34;
-  return BABYLON.Scalar.Clamp((returningPressure + advancingPressure + expulsionPressure + breath) * lateIntensity, 0, 1);
+  const motionProgress = 0.3 + smoothstep((time - 6) / 44) * 0.7;
+  const lateIntensity = 0.4 + smoothstep((time - 14) / 38) * 0.6;
+  return BABYLON.Scalar.Clamp(
+    (returningPressure + advancingPressure + expulsionPressure + breath) * motionProgress * lateIntensity,
+    0,
+    1,
+  );
 }
 
 function getFinalFunnelDiameter(time) {
@@ -386,10 +390,10 @@ function bell(value, center, width) {
 
 function organicProfile(angle, progress, detail) {
   const referenceFlow = getReferenceFormFlow(angle, progress, detail);
-  // Macro chambers, pronounced fins and meso folds are already present at
-  // entry. The dramatic form language is therefore visible immediately, not
-  // something introduced only by the later panic-lighting phases.
-  const referenceProfile = 1 + referenceFlow.displacement;
+  // The same existing formations emerge gradually along the route. This keeps
+  // the entrance calmer without adding or replacing any tunnel geometry.
+  const formEmergence = 0.38 + smoothstep((progress - 0.08) / 0.62) * 0.62;
+  const referenceProfile = 1 + referenceFlow.displacement * formEmergence;
   const preservedFunnelProfile = getPreviousOrganicProfile(angle, progress, detail);
   // The existing tiny White Room funnel is authoritative.  Ease the new
   // language back into its prior profile before the terminal aperture.
@@ -600,14 +604,22 @@ function createTunnelLights(scene, meshes, route) {
 
 function updateTunnelLights(lights, route, time, impulse) {
   const look = getTunnelLook(time);
-  const phase = getTunnelPhase(time);
+  const entryTransition = smoothstep((time - 7) / 23);
+  const entryWarmth = 1 - entryTransition;
   // Keep the end dark, but never allow the converging tunnel to lose all
   // readable relief shortly before the White Room aperture.
   const lateVisibility = smoothstep((time - LATE_TUNNEL_VISIBILITY_START) / (TUNNEL_DURATION - LATE_TUNNEL_VISIBILITY_START));
   const whiteRoomSpillProgress = smoothstep((time - WHITE_ROOM_SPILL_START) / (TUNNEL_DURATION - WHITE_ROOM_SPILL_START));
-  // Keep the fill deliberately low: it only preserves a trace of wall detail
-  // in the deepest shadows, while the moving side lights define the relief.
-  lights.fill.intensity = (0.14 + look.light * 0.13 + lateVisibility * 0.14) * FILL_LIGHT_BOOST;
+  const warmEntryLight = BABYLON.Color3.FromHexString("#ffe2bd");
+  const coolTunnelFill = BABYLON.Color3.FromHexString("#aeb7c4");
+  const warmEntryGround = BABYLON.Color3.FromHexString("#9a7659");
+  const coolTunnelGround = BABYLON.Color3.FromHexString("#321d26");
+  // Daylight from the idyll initially reaches into the shell, then yields to
+  // the existing side rakes and the White-Room spill without a hard handoff.
+  lights.fill.diffuse = BABYLON.Color3.Lerp(warmEntryLight, coolTunnelFill, entryTransition);
+  lights.fill.groundColor = BABYLON.Color3.Lerp(warmEntryGround, coolTunnelGround, entryTransition);
+  const tunnelFill = (0.14 + look.light * 0.13 + lateVisibility * 0.14) * FILL_LIGHT_BOOST;
+  lights.fill.intensity = BABYLON.Scalar.Lerp(0.43, tunnelFill, entryTransition);
   lights.whiteRoomSpill.intensity = WHITE_ROOM_SPILL_MAX_INTENSITY * whiteRoomSpillProgress;
   lights.points.forEach((light, index) => {
     const rig = lights.rigs[index];
@@ -628,16 +640,17 @@ function updateTunnelLights(lights, route, time, impulse) {
       viewerPosition.y += EYE_HEIGHT;
       light.direction.copyFrom(viewerPosition.subtract(light.position).normalize());
     }
-    // A modest lower bound keeps the fins readable through the late, dark
-    // phases without flattening the tunnel into an evenly lit tube.
-    const visibility = 0.66 + look.light * 0.42 + lateVisibility * 0.2;
+    // The entry carries a little more soft daylight. It drains gradually
+    // rather than switching off, leaving the grazing pattern to define later
+    // relief and contrast.
+    const visibility = 0.66 + look.light * 0.42 + lateVisibility * 0.2 + entryWarmth * 0.22;
     const pulse = index === 2 ? impulse * 0.16 : 0;
     light.intensity = rig.intensity * visibility * GRAZING_LIGHT_BOOST + pulse;
-    if (phase.id === "PEAK" && index >= 3) {
-      light.diffuse = BABYLON.Color3.FromHexString("#67252b");
-    } else {
-      light.diffuse = BABYLON.Color3.FromHexString(rig.color);
-    }
+    const baseColor = BABYLON.Color3.FromHexString(rig.color);
+    const tunnelColor = index >= 3
+      ? BABYLON.Color3.Lerp(baseColor, BABYLON.Color3.FromHexString("#67252b"), smoothstep((time - 43) / 9))
+      : baseColor;
+    light.diffuse = BABYLON.Color3.Lerp(warmEntryLight, tunnelColor, entryTransition);
   });
 }
 
