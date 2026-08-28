@@ -4,9 +4,7 @@ const DENSE_GRASS_ZONES = [
   { count: 25000, innerRadius: 22, outerRadius: 42 },
   { count: 15000, innerRadius: 42, outerRadius: 58 },
 ];
-const WISPY_GRASS_INSTANCE_COUNT = 800;
 const GRASS_SCALE_RANGE = [0.14, 0.2];
-const WISPY_GRASS_SCALE_RANGE = [0.12, 0.18];
 const HOUSE_APPROACH_CLEARANCE = 1.15;
 const HOUSE_ENTRANCE_CLEARANCE = 2.1;
 const POLLEN_COUNT = 34;
@@ -304,7 +302,7 @@ function createDreamyLighting(scene) {
 async function loadNatureLibraries(scene, world) {
   const names = [
     "CommonTree_1", "CommonTree_2", "CommonTree_3", "CommonTree_4",
-    "Grass_Common_Short", "Grass_Wispy_Tall",
+    "Grass_Common_Short",
     "Flower_3_Group", "Flower_4_Group", "Flower_4_Single", "Plant_1", "Fern_1", "Clover_1",
     "Bush_Common", "Bush_Common_Flowers",
     "Rock_Medium_1", "Rock_Medium_2", "Rock_Medium_3",
@@ -349,22 +347,18 @@ function placeNature(scene, world, libraries, startPosition) {
   const random = createRandom(7391);
   const swayAnchors = [];
   const entries = [];
-  const counts = { grass: 0, wispyGrass: 0, trees: 0, flowers: 0, plants: 0, bushes: 0, rocks: 0 };
+  const counts = { grass: 0, trees: 0, flowers: 0, plants: 0, bushes: 0, rocks: 0 };
   const add = (library, name, placement, kind) => {
     const anchor = createInstanceGroup(scene, world, library, name, placement, startPosition);
     entries.push({ anchor, prefix: name });
     counts[kind] += 1;
-    if (kind === "flowers" || kind === "plants" || kind === "bushes" || kind === "grass" || kind === "wispyGrass") {
+    if (kind === "flowers" || kind === "plants" || kind === "bushes" || kind === "grass") {
       swayAnchors.push({ anchor, phase: random() * Math.PI * 2, kind });
     }
   };
 
   const grassCount = createDenseGrassField(libraries.Grass_Common_Short, startPosition, random, DENSE_GRASS_ZONES, GRASS_SCALE_RANGE);
-  const wispyGrassCount = createDenseGrassField(libraries.Grass_Wispy_Tall, startPosition, random, [
-    { count: WISPY_GRASS_INSTANCE_COUNT, innerRadius: 7, outerRadius: 58 },
-  ], WISPY_GRASS_SCALE_RANGE);
   counts.grass = grassCount;
-  counts.wispyGrass = wispyGrassCount;
 
   const treePlacements = [
     ["CommonTree_1", -18, -5, 1.36, 0.4], ["CommonTree_2", 13, 7, 1.2, 5.4],
@@ -513,8 +507,8 @@ function createAtmosphere(scene, world, startPosition, swayAnchors, sky) {
       state.instance.position.set(state.x + Math.sin(elapsed * 0.15 + state.phase) * 0.48, state.y + Math.sin(elapsed * 0.31 + state.phase) * 0.16, state.z + Math.cos(elapsed * 0.12 + state.phase) * 0.4);
     });
     swayAnchors.forEach((state) => {
-      const rate = state.kind === "grass" || state.kind === "wispyGrass" ? 0.56 : 0.24;
-      const amplitude = state.kind === "bushes" ? 0.008 : state.kind === "grass" || state.kind === "wispyGrass" ? 0.022 : 0.014;
+      const rate = state.kind === "grass" ? 0.56 : 0.24;
+      const amplitude = state.kind === "bushes" ? 0.008 : state.kind === "grass" ? 0.022 : 0.014;
       state.anchor.rotation.z = Math.sin(elapsed * rate + state.phase) * amplitude;
       state.anchor.rotation.x = Math.sin(elapsed * rate * 0.73 + state.phase * 1.7) * amplitude * 0.55;
     });
