@@ -61,14 +61,30 @@ const HORIZON_HILL_LAYOUT = [
 export async function createDreamyIdyll(scene, startPosition) {
   const world = new BABYLON.TransformNode("dreamy-idyll-world", scene);
   const meadow = createRollingMeadow(scene, world, startPosition);
-  const mountains = await createDistantMountainLayers(scene, world, startPosition);
-  const sky = await createDreamySky(scene, world, startPosition);
-  const house = await createHouseTarget(scene, world, startPosition);
+  // These assets do not depend on one another. Starting them together makes
+  // the visible idyll ready after the slowest load instead of their sum.
+  const mountainsPromise = createDistantMountainLayers(scene, world, startPosition);
+  const skyPromise = createDreamySky(scene, world, startPosition);
+  const housePromise = createHouseTarget(scene, world, startPosition);
+  const librariesPromise = loadNatureLibraries(scene, world);
+  const embeddedGrassSourcePromise = loadEmbeddedGrassPatchSource(scene, world);
+  const [mountains, sky, house, libraries, embeddedGrassSource] = await Promise.all([
+    mountainsPromise,
+    skyPromise,
+    housePromise,
+    librariesPromise,
+    embeddedGrassSourcePromise,
+  ]);
   const lights = createDreamyLighting(scene);
-  const libraries = await loadNatureLibraries(scene, world);
   const vegetation = placeNature(scene, world, libraries, startPosition, house, meadow);
   vegetation.buildGrass();
-  await createEmbeddedGrassPatches(scene, world, startPosition, house, vegetation.entries);
+  createEmbeddedGrassPatches(
+    world,
+    startPosition,
+    embeddedGrassSource,
+    house,
+    vegetation.entries,
+  );
   const atmosphere = createAtmosphere(scene, world, startPosition, vegetation.swayAnchors, sky);
 
   return {
@@ -97,7 +113,7 @@ export async function createDreamyIdyll(scene, startPosition) {
   };
 }
 
-async function createEmbeddedGrassPatches(scene, world, startPosition, house, vegetationEntries) {
+async function loadEmbeddedGrassPatchSource(scene, world) {
   const container = await BABYLON.SceneLoader.LoadAssetContainerAsync(
     EMBEDDED_GRASS_ROOT,
     EMBEDDED_GRASS_FILE,
@@ -121,7 +137,10 @@ async function createEmbeddedGrassPatches(scene, world, startPosition, house, ve
   source.isPickable = false;
   source.receiveShadows = false;
   if (source.material) source.material.backFaceCulling = false;
+  return source;
+}
 
+function createEmbeddedGrassPatches(world, startPosition, source, house, vegetationEntries) {
   const patches = createEmbeddedGrassPatchLayout(startPosition, house, vegetationEntries);
   patches.forEach((patch, index) => {
     const instance = source.createInstance(`dreamy-embedded-grass-patch-${index + 1}`);
