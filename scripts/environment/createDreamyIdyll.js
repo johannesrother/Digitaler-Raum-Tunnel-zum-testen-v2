@@ -323,6 +323,18 @@ async function loadLibrary(scene, world, name) {
   container.cameras.forEach((camera) => camera.dispose());
   container.animationGroups.forEach((group) => group.stop());
   container.addAllToScene();
+  if (name.startsWith("Grass_")) {
+    // The GLTF root imports with a mirrored X axis. Thin-instance matrices are
+    // already authored in meadow world space, so retain the asset geometry but
+    // remove that inherited coordinate-system mirror before using it as the
+    // thin-instance source.
+    container.rootNodes.forEach((root) => {
+      root.position.set(0, 0, 0);
+      root.scaling.set(1, 1, 1);
+      root.rotation.set(0, 0, 0);
+      root.rotationQuaternion = null;
+    });
+  }
   container.rootNodes.forEach((root) => { root.parent = world; });
   const meshes = container.meshes.filter((mesh) => mesh.getTotalVertices() > 0);
   meshes.forEach((mesh) => {
