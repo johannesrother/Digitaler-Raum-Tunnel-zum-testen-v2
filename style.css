@@ -29,6 +29,106 @@ body {
   outline: none;
 }
 
+.experience-start-screen {
+  --idyll-start-image: none;
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  color: #fff;
+  background-color: #15202a;
+  background-image: linear-gradient(rgb(10 18 22 / 16%), rgb(10 18 22 / 30%)), var(--idyll-start-image);
+  background-position: center;
+  background-size: cover;
+  opacity: 1;
+  transition: opacity 0.8s ease;
+}
+
+.experience-start-screen::before {
+  position: absolute;
+  inset: 0;
+  content: "";
+  background: rgb(11 19 22 / 14%);
+  transition: background 0.4s ease;
+}
+
+.experience-start-screen--has-snapshot::before {
+  background: rgb(11 19 22 / 22%);
+}
+
+.experience-start-screen--leaving {
+  pointer-events: none;
+  opacity: 0;
+}
+
+.experience-start-screen__content {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  justify-items: center;
+  gap: 1rem;
+  padding: 2rem;
+  text-align: center;
+}
+
+.experience-start-message,
+.start-experience-button {
+  margin: 0;
+  color: #fff;
+  font: 500 clamp(0.8rem, 1.5vw, 1rem)/1.2 Arial, Helvetica, sans-serif;
+  letter-spacing: 0.18em;
+}
+
+.experience-start-message {
+  text-shadow: 0 1px 16px rgb(0 0 0 / 36%);
+  transition: opacity 0.35s ease, transform 0.35s ease;
+}
+
+.experience-start-message::after {
+  display: inline-block;
+  width: 1.2em;
+  content: "...";
+  animation: loading-ellipsis 1.4s steps(4, end) infinite;
+  text-align: left;
+}
+
+.experience-start-message--hidden {
+  position: absolute;
+  opacity: 0;
+  transform: translateY(-0.35rem);
+  pointer-events: none;
+}
+
+.start-experience-button {
+  min-width: min(19rem, calc(100vw - 3rem));
+  padding: 0.95rem 1.2rem;
+  border: 1px solid rgb(255 255 255 / 78%);
+  border-radius: 0;
+  background: rgb(20 29 31 / 20%);
+  box-shadow: 0 3px 20px rgb(0 0 0 / 16%);
+  cursor: pointer;
+  transition: background 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
+}
+
+.start-experience-button:hover:not(:disabled),
+.start-experience-button:focus-visible {
+  border-color: #fff;
+  background: rgb(255 255 255 / 16%);
+  transform: translateY(-1px);
+}
+
+.start-experience-button:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 4px;
+}
+
+@keyframes loading-ellipsis {
+  0% { clip-path: inset(0 100% 0 0); }
+  100% { clip-path: inset(0 0 0 0); }
+}
+
 .runtime-panel {
   position: fixed;
   right: 1rem;
@@ -44,7 +144,7 @@ body {
 }
 
 .runtime-panel p {
-  margin: 0;
+  display: none;
 }
 
 #enter-vr {

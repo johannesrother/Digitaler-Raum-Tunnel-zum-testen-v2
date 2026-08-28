@@ -11,6 +11,15 @@
     <main class="experience-shell">
       <canvas id="renderCanvas" aria-label="Immersive Idylle"></canvas>
 
+      <section id="experience-start-screen" class="experience-start-screen" aria-live="polite">
+        <div class="experience-start-screen__content">
+          <p id="experience-start-message" class="experience-start-message">EXPERIENCE IS LOADING</p>
+          <button id="start-experience" class="start-experience-button" type="button" hidden disabled>
+            START EXPERIENCE
+          </button>
+        </div>
+      </section>
+
       <section class="runtime-panel" aria-live="polite">
         <p id="runtime-status">Idylle wird vorbereitet …</p>
         <button id="enter-vr" type="button" hidden>VR betreten</button>

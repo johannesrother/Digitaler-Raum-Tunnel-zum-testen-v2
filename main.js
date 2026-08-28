@@ -1,19 +1,25 @@
 import { createEngine } from "./scripts/core/engine.js";
 import { createIdyllScene } from "./scripts/core/createIdyllScene.js";
 import { initializeWebXR } from "./scripts/core/initializeWebXR.js";
+import { createExperienceStartScreen } from "./scripts/ui/createExperienceStartScreen.js";
 import { configureResizeHandling, setStatus } from "./scripts/utils/dom.js";
 
 async function startExperience() {
   const canvas = document.getElementById("renderCanvas");
   const statusElement = document.getElementById("runtime-status");
   const enterVrButton = document.getElementById("enter-vr");
+  const startScreen = createExperienceStartScreen(canvas);
 
   const engine = createEngine(canvas);
   const scene = await createIdyllScene(engine, canvas);
   const removeResizeHandling = configureResizeHandling(engine);
 
-  // Start desktop rendering immediately; WebXR initialisation is non-blocking.
+  // Rendering begins so the paused initial camera view can be captured, but
+  // the experience timeline itself remains gated until the explicit start.
   engine.runRenderLoop(() => scene.render());
+  await scene.whenReadyAsync();
+  await new Promise((resolve) => window.requestAnimationFrame(resolve));
+  startScreen.captureInitialIdyll();
   setStatus(statusElement, "Idylle bereit. WebXR wird geprüft …");
 
   const xr = await initializeWebXR({
@@ -22,6 +28,12 @@ async function startExperience() {
     statusElement,
   });
   scene.metadata.transition.attachWebXR(xr);
+  startScreen.setReady(() => {
+    // This direct click is also the browser gesture for the existing HTML
+    // audio elements. The timeline is reset and begins here at exactly t = 0.
+    scene.metadata.idyllSound.start();
+    scene.metadata.transition.start();
+  });
 
   window.addEventListener(
     "beforeunload",
@@ -44,6 +56,10 @@ async function startExperience() {
 
 startExperience().catch((error) => {
   console.error("Die Idylle konnte nicht gestartet werden.", error);
+  const startMessage = document.getElementById("experience-start-message");
+  if (startMessage) {
+    startMessage.textContent = "EXPERIENCE COULD NOT LOAD";
+  }
   setStatus(
     document.getElementById("runtime-status"),
     "Die Idylle konnte nicht gestartet werden. Details stehen in der Browser-Konsole.",

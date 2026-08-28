@@ -61,6 +61,7 @@ export function createIdyllTunnelTransition(scene, options) {
   let tunnelEntryPrepared = false;
   let riftSoundStarted = false;
   let suctionSoundStarted = false;
+  let experienceStarted = false;
   let previousFrameTime = performance.now();
   const initialHeading = headingFrom(options.initialForward);
 
@@ -88,6 +89,12 @@ export function createIdyllTunnelTransition(scene, options) {
   options.tunnel.setSequenceActive(false);
 
   const observer = scene.onBeforeRenderObservable.add(() => {
+    if (!experienceStarted) {
+      // Keep the real idyll rendered behind the loading screen while freezing
+      // every timeline-driven transition until START EXPERIENCE is clicked.
+      previousFrameTime = performance.now();
+      return;
+    }
     flashDebug.nextFrame();
     const frameTime = performance.now();
     const delta = Math.min((frameTime - previousFrameTime) / 1000, 0.04);
@@ -191,6 +198,18 @@ export function createIdyllTunnelTransition(scene, options) {
   });
 
   return {
+    start() {
+      if (experienceStarted) {
+        return;
+      }
+      experienceStarted = true;
+      elapsed = 0;
+      previousFrameTime = performance.now();
+      previousRiftEntryDistance = rift.entryPlaneDistance(
+        root.position,
+        (xrCamera ?? scene.activeCamera ?? options.desktopCamera)?.minZ ?? 0,
+      );
+    },
     attachWebXR(xr) {
       if (!xr) {
         return;

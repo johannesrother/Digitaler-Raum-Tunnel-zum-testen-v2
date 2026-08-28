@@ -31,13 +31,8 @@ export function createIdyllSound() {
     window.removeEventListener("keydown", start);
   };
 
-  window.addEventListener("pointerdown", start);
-  window.addEventListener("click", start);
-  window.addEventListener("touchstart", start, { passive: true });
-  window.addEventListener("keydown", start);
-  start();
-
   return {
+    start,
     fadeOutAndStop(duration = 2.5) {
       if (!started) {
         return;
