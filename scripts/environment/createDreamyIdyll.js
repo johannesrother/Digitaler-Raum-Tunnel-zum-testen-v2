@@ -9,6 +9,10 @@ const TOON_SKYDOME_FILE = "Toon Skydome.glb";
 const TOON_SKYDOME_SCALE = 13;
 const HORIZON_HILLS_ROOT = "./assets/idylle/";
 const HORIZON_HILLS_FILE = "hügel.glb";
+const HOUSE_ROOT = "./assets/idylle/";
+const HOUSE_FILE = "Haus.glb";
+const HOUSE_SCALE = 4.6;
+const HOUSE_OFFSET = new BABYLON.Vector3(-2.8, 0, 20.7);
 
 const HORIZON_HILL_LAYOUT = [
   { angle: 0.08, radius: 134, scale: [31, 15, 22], yaw: -0.64 },
@@ -32,6 +36,7 @@ export async function createDreamyIdyll(scene, startPosition) {
   const meadow = createRollingMeadow(scene, world, startPosition);
   const mountains = await createDistantMountainLayers(scene, world, startPosition);
   const sky = await createDreamySky(scene, world, startPosition);
+  const house = await createHouseTarget(scene, world, startPosition);
   const lights = createDreamyLighting(scene);
   const libraries = await loadNatureLibraries(scene, world);
   const vegetation = placeNature(scene, world, libraries, startPosition);
@@ -42,6 +47,7 @@ export async function createDreamyIdyll(scene, startPosition) {
     meadow,
     mountains,
     sky,
+    house,
     lights,
     vegetation,
     startPosition: new BABYLON.Vector3(
@@ -201,6 +207,63 @@ async function createDreamySky(scene, world, startPosition) {
   return {
     sky,
     update() {},
+  };
+}
+
+async function createHouseTarget(scene, world, startPosition) {
+  const container = await BABYLON.SceneLoader.LoadAssetContainerAsync(
+    HOUSE_ROOT,
+    HOUSE_FILE,
+    scene,
+  );
+  container.addAllToScene();
+
+  const house = container.meshes.find((mesh) => mesh.getTotalVertices() > 0);
+  if (!house) {
+    throw new Error("Haus GLB did not contain a renderable mesh.");
+  }
+  const houseRoot = new BABYLON.TransformNode("dreamy-idyll-house-target", scene);
+  container.rootNodes.forEach((node) => {
+    node.parent = houseRoot;
+  });
+  houseRoot.parent = world;
+  houseRoot.scaling.setAll(HOUSE_SCALE);
+  houseRoot.position.set(
+    startPosition.x + HOUSE_OFFSET.x,
+    getMeadowHeight(startPosition.x + HOUSE_OFFSET.x, startPosition.z + HOUSE_OFFSET.z, startPosition)
+      + HOUSE_SCALE * 0.47548696398735046,
+    startPosition.z + HOUSE_OFFSET.z,
+  );
+  houseRoot.computeWorldMatrix(true);
+  house.computeWorldMatrix(true);
+  container.materials.forEach((material) => {
+    material.backFaceCulling = false;
+  });
+  house.isPickable = false;
+  house.receiveShadows = true;
+
+  const bounds = house.getBoundingInfo().boundingBox;
+  const facadeNormal = new BABYLON.Vector3(0, 0, -1);
+  const riftCenter = new BABYLON.Vector3(
+    bounds.centerWorld.x,
+    getMeadowHeight(startPosition.x + HOUSE_OFFSET.x, startPosition.z + HOUSE_OFFSET.z, startPosition),
+    bounds.minimumWorld.z - 0.18,
+  );
+  const travelForward = facadeNormal.negate();
+  const lateral = new BABYLON.Vector3(travelForward.z, 0, -travelForward.x);
+
+  return {
+    root: houseRoot,
+    mesh: house,
+    position: houseRoot.position.clone(),
+    scale: HOUSE_SCALE,
+    bounds,
+    entrance: {
+      center: riftCenter,
+      forward: travelForward,
+      lateral,
+    },
+    approachTarget: riftCenter.add(new BABYLON.Vector3(0, 1.65, 0)),
   };
 }
 

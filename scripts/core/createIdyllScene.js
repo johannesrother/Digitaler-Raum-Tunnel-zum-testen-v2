@@ -20,7 +20,15 @@ export async function createIdyllScene(engine, canvas) {
   const dreamyIdyll = await createDreamyIdyll(scene, environment.startPosition);
   disableOldIdyllVisuals(environment);
   disablePreviousIdyllLighting(environment);
-  const desktopCamera = createDesktopCamera(scene, canvas, dreamyIdyll.startPosition);
+  // The existing portal machinery receives a new spatial anchor only: the
+  // house facade. Its crossing, handoff, stencil and timing remain unchanged.
+  environment.architecture.entrance = dreamyIdyll.house.entrance;
+  const desktopCamera = createDesktopCamera(
+    scene,
+    canvas,
+    dreamyIdyll.startPosition,
+    dreamyIdyll.house.approachTarget,
+  );
   const tunnel = createOrganicTunnel(scene, {
     entrance: environment.architecture.entrance,
     grassMaterial: environment.materials.terrain,
