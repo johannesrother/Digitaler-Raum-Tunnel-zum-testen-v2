@@ -20,6 +20,8 @@ const LATE_TUNNEL_RANGE_BOOST = 1.22;
 const WHITE_ROOM_SPILL_START = 36;
 const WHITE_ROOM_SPILL_MAX_INTENSITY = 4.5;
 const WHITE_ROOM_SPILL_RANGE = 52;
+const ENTRY_BACKLIGHT_MAX_INTENSITY = 12;
+const ENTRY_BACKLIGHT_RANGE = 34;
 // Existing morph fields remain deliberately uneven so they do not read as one
 // synchronized tube pulse. Values are moderate and still safety-clamped.
 const WALL_MOTION_AMPLITUDES = [1.1, 1.2, 1.02, 1.16, 1.07, 1.13];
@@ -103,6 +105,7 @@ export function createOrganicTunnel(scene, options) {
       mesh.setEnabled(enabled);
       lights.points.forEach((light) => light.setEnabled(enabled));
       lights.fill.setEnabled(enabled);
+      lights.entryBacklight.setEnabled(enabled);
       lights.whiteRoomSpill.setEnabled(enabled);
     },
     update(tunnelTime) {
@@ -142,6 +145,7 @@ export function createOrganicTunnel(scene, options) {
       scene.onBeforeRenderObservable.remove(observer);
       lights.points.forEach((light) => light.dispose());
       lights.fill.dispose();
+      lights.entryBacklight.dispose();
       lights.whiteRoomSpill.dispose();
       wallDeformation.dispose();
       mesh.dispose();
@@ -561,6 +565,22 @@ function createTunnelMaterial(scene) {
 }
 
 function createTunnelLights(scene, meshes, route) {
+  const entranceFrame = route.frameAt(0);
+  const entryBacklightPosition = entranceFrame.position
+    .subtract(entranceFrame.tangent.scale(1.6));
+  entryBacklightPosition.y += EYE_HEIGHT + 0.08;
+  // This lives in stable tunnel-route coordinates, behind the visitor at the
+  // entrance, so it reads as Golden Hour light travelling forward through the
+  // opening without relying on any rift or handoff state.
+  const entryBacklight = new BABYLON.PointLight(
+    "organic-tunnel-entry-backlight",
+    entryBacklightPosition,
+    scene,
+  );
+  entryBacklight.diffuse = BABYLON.Color3.FromHexString("#ffd5a6");
+  entryBacklight.range = ENTRY_BACKLIGHT_RANGE;
+  entryBacklight.intensity = ENTRY_BACKLIGHT_MAX_INTENSITY;
+  entryBacklight.includedOnlyMeshes.push(...meshes);
   const points = GRAZING_LIGHT_RIGS.map((rig, index) => {
     const frame = route.frameAt(0);
     const position = frame.position.clone();
@@ -608,7 +628,7 @@ function createTunnelLights(scene, meshes, route) {
   whiteRoomSpill.range = WHITE_ROOM_SPILL_RANGE;
   whiteRoomSpill.intensity = 0;
   whiteRoomSpill.includedOnlyMeshes.push(...meshes);
-  return { points, fill, whiteRoomSpill, rigs: GRAZING_LIGHT_RIGS };
+  return { points, fill, entryBacklight, whiteRoomSpill, rigs: GRAZING_LIGHT_RIGS };
 }
 
 function updateTunnelLights(lights, route, time, impulse) {
@@ -629,6 +649,11 @@ function updateTunnelLights(lights, route, time, impulse) {
   lights.fill.groundColor = BABYLON.Color3.Lerp(warmEntryGround, coolTunnelGround, entryTransition);
   const tunnelFill = (0.14 + look.light * 0.13 + lateVisibility * 0.14) * FILL_LIGHT_BOOST;
   lights.fill.intensity = BABYLON.Scalar.Lerp(0.43, tunnelFill, entryTransition);
+  // The spatial source remains at the entrance while only its local output
+  // fades, retaining a continuous warm-to-neutral progression over the first
+  // half minute without touching global rendering state.
+  lights.entryBacklight.intensity = ENTRY_BACKLIGHT_MAX_INTENSITY
+    * (1 - smoothstep((time - 8) / 22));
   lights.whiteRoomSpill.intensity = WHITE_ROOM_SPILL_MAX_INTENSITY * whiteRoomSpillProgress;
   lights.points.forEach((light, index) => {
     const rig = lights.rigs[index];
