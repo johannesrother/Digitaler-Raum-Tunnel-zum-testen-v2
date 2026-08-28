@@ -1,9 +1,10 @@
 const MEADOW_RADIUS = 55;
 const NEAR_GRASS_RADIUS = 25;
-const GRASS_INSTANCE_COUNT = 1650;
-const WISPY_GRASS_INSTANCE_COUNT = 360;
-const GRASS_SCALE_RANGE = [0.27, 0.49];
-const WISPY_GRASS_SCALE_RANGE = [0.24, 0.44];
+const GRASS_INSTANCE_COUNT = 6000;
+const NEAR_GRASS_INSTANCE_COUNT = 4800;
+const WISPY_GRASS_INSTANCE_COUNT = 600;
+const GRASS_SCALE_RANGE = [0.17, 0.32];
+const WISPY_GRASS_SCALE_RANGE = [0.15, 0.29];
 const HOUSE_APPROACH_CLEARANCE = 1.7;
 const HOUSE_ENTRANCE_CLEARANCE = 2.5;
 const POLLEN_COUNT = 34;
@@ -357,7 +358,8 @@ function placeNature(scene, world, libraries, startPosition) {
   };
 
   for (let index = 0; index < GRASS_INSTANCE_COUNT; index += 1) {
-    const point = randomMeadowPoint(random, 1.8, NEAR_GRASS_RADIUS);
+    const outerRadius = index < NEAR_GRASS_INSTANCE_COUNT ? 16 : NEAR_GRASS_RADIUS;
+    const point = randomMeadowPoint(random, 1.8, outerRadius);
     add(libraries.Grass_Common_Short, `meadow-grass-${index}`, {
       x: startPosition.x + point.x, z: startPosition.z + point.z,
       scale: BABYLON.Scalar.Lerp(GRASS_SCALE_RANGE[0], GRASS_SCALE_RANGE[1], random()), rotation: random() * Math.PI * 2,
