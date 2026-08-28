@@ -51,7 +51,7 @@ export async function createDreamyIdyll(scene, startPosition) {
   const house = await createHouseTarget(scene, world, startPosition);
   const lights = createDreamyLighting(scene);
   const libraries = await loadNatureLibraries(scene, world);
-  const vegetation = placeNature(scene, world, libraries, startPosition);
+  const vegetation = placeNature(scene, world, libraries, startPosition, house);
   const atmosphere = createAtmosphere(scene, world, startPosition, vegetation.swayAnchors, sky);
 
   return {
@@ -343,22 +343,19 @@ async function loadLibrary(scene, world, name) {
   return { meshes };
 }
 
-function placeNature(scene, world, libraries, startPosition) {
+function placeNature(scene, world, libraries, startPosition, house) {
   const random = createRandom(7391);
   const swayAnchors = [];
   const entries = [];
   const counts = { grass: 0, trees: 0, flowers: 0, plants: 0, bushes: 0, rocks: 0 };
   const add = (library, name, placement, kind) => {
     const anchor = createInstanceGroup(scene, world, library, name, placement, startPosition);
-    entries.push({ anchor, prefix: name });
+    entries.push({ anchor, prefix: name, kind });
     counts[kind] += 1;
     if (kind === "flowers" || kind === "plants" || kind === "bushes" || kind === "grass") {
       swayAnchors.push({ anchor, phase: random() * Math.PI * 2, kind });
     }
   };
-
-  const grassCount = createDenseGrassField(libraries.Grass_Common_Short, startPosition, random, DENSE_GRASS_ZONES, GRASS_SCALE_RANGE);
-  counts.grass = grassCount;
 
   const treePlacements = [
     ["CommonTree_1", -18, -5, 1.36, 0.4], ["CommonTree_2", 13, 7, 1.2, 5.4],
@@ -418,6 +415,19 @@ function placeNature(scene, world, libraries, startPosition) {
   rockPlacements.forEach(([library, x, z, scale, rotation], index) => {
     add(libraries[library], `dreamy-rock-${index}`, { x: startPosition.x + x, z: startPosition.z + z, scale, rotation, yOffset: -0.14 }, "rocks");
   });
+
+  // Grass is populated last, after every static prop has an evaluated world
+  // bound.  The exclusion data is computed once here; thin instances require
+  // no raycasts or placement work during rendering.
+  const grassExclusions = createGrassExclusions(house, entries);
+  counts.grass = createDenseGrassField(
+    libraries.Grass_Common_Short,
+    startPosition,
+    random,
+    DENSE_GRASS_ZONES,
+    GRASS_SCALE_RANGE,
+    grassExclusions,
+  );
   return { counts, swayAnchors, entries };
 }
 
@@ -436,16 +446,16 @@ function createInstanceGroup(scene, world, library, name, placement, startPositi
   return anchor;
 }
 
-function createDenseGrassField(library, startPosition, random, zones, scaleRange) {
+function createDenseGrassField(library, startPosition, random, zones, scaleRange, exclusions) {
   const mesh = library.meshes[0];
   // The asset's origin sits slightly above its lowest vertices.  Use its real
   // local bound, rather than a guessed offset, so every instance meets the
   // same height function that generated the meadow beneath it.
   const assetBottom = mesh.getBoundingInfo().boundingBox.minimum.y;
-  return createThinInstanceField(mesh, startPosition, random, zones, scaleRange, assetBottom);
+  return createThinInstanceField(mesh, startPosition, random, zones, scaleRange, assetBottom, exclusions);
 }
 
-function createThinInstanceField(mesh, startPosition, random, zones, scaleRange, assetBottom) {
+function createThinInstanceField(mesh, startPosition, random, zones, scaleRange, assetBottom, exclusions) {
   const count = zones.reduce((total, zone) => total + zone.count, 0);
   const matrices = new Float32Array(count * 16);
   const scaling = new BABYLON.Vector3();
@@ -456,7 +466,7 @@ function createThinInstanceField(mesh, startPosition, random, zones, scaleRange,
 
   zones.forEach((zone) => {
     for (let zoneIndex = 0; zoneIndex < zone.count; zoneIndex += 1) {
-      const point = randomMeadowPoint(random, zone.innerRadius, zone.outerRadius);
+      const point = randomMeadowPoint(random, zone.innerRadius, zone.outerRadius, startPosition, exclusions);
       const scale = BABYLON.Scalar.Lerp(scaleRange[0], scaleRange[1], random());
       scaling.setAll(scale);
       position.set(
@@ -477,6 +487,63 @@ function createThinInstanceField(mesh, startPosition, random, zones, scaleRange,
   mesh.isPickable = false;
   mesh.receiveShadows = false;
   return count;
+}
+
+function createGrassExclusions(house, entries) {
+  const exclusions = [
+    createBoundsExclusion(house.bounds.minimumWorld, house.bounds.maximumWorld, 0.5, "house"),
+  ];
+
+  entries.forEach(({ anchor, kind, prefix }) => {
+    const bounds = getInstanceBounds(anchor);
+    if (!bounds) return;
+
+    if (kind === "trees") {
+      // A tree's canopy is much wider than its trunk.  Keep only its real
+      // ground footprint clear, preserving the meadow beneath the branches.
+      const width = bounds.maximum.x - bounds.minimum.x;
+      const depth = bounds.maximum.z - bounds.minimum.z;
+      exclusions.push({
+        type: "circle",
+        x: anchor.getAbsolutePosition().x,
+        z: anchor.getAbsolutePosition().z,
+        radius: BABYLON.Scalar.Clamp(Math.min(width, depth) * 0.13 + 0.1, 0.25, 0.72),
+        label: prefix,
+      });
+      return;
+    }
+
+    const padding = kind === "rocks" ? 0.26 : kind === "bushes" ? 0.2 : 0.12;
+    exclusions.push(createBoundsExclusion(bounds.minimum, bounds.maximum, padding, prefix));
+  });
+
+  return exclusions.filter(Boolean);
+}
+
+function getInstanceBounds(anchor) {
+  const meshes = anchor.getChildMeshes(false);
+  if (meshes.length === 0) return null;
+
+  const minimum = new BABYLON.Vector3(Infinity, Infinity, Infinity);
+  const maximum = new BABYLON.Vector3(-Infinity, -Infinity, -Infinity);
+  meshes.forEach((mesh) => {
+    mesh.computeWorldMatrix(true);
+    const bounds = mesh.getBoundingInfo().boundingBox;
+    minimum.minimizeInPlace(bounds.minimumWorld);
+    maximum.maximizeInPlace(bounds.maximumWorld);
+  });
+  return { minimum, maximum };
+}
+
+function createBoundsExclusion(minimum, maximum, padding, label) {
+  return {
+    type: "bounds",
+    minX: minimum.x - padding,
+    maxX: maximum.x + padding,
+    minZ: minimum.z - padding,
+    maxZ: maximum.z + padding,
+    label,
+  };
 }
 
 function createAtmosphere(scene, world, startPosition, swayAnchors, sky) {
@@ -522,21 +589,31 @@ function randomPoint(random, inner, outer) {
   return { x: Math.cos(angle) * radius, z: Math.sin(angle) * radius };
 }
 
-function randomMeadowPoint(random, inner, outer) {
+function randomMeadowPoint(random, inner, outer, startPosition, exclusions) {
   const entrance = {
     x: HOUSE_OFFSET.x,
     z: HOUSE_OFFSET.z - HOUSE_SCALE * 0.7114279866218567,
   };
-  for (let attempt = 0; attempt < 24; attempt += 1) {
+  for (let attempt = 0; attempt < 256; attempt += 1) {
     const point = randomPoint(random, inner, outer);
     if (
       distanceToSegment(point, { x: 0, z: 0 }, entrance) >= HOUSE_APPROACH_CLEARANCE
       && Math.hypot(point.x - entrance.x, point.z - entrance.z) >= HOUSE_ENTRANCE_CLEARANCE
+      && !isInsideGrassExclusion(startPosition.x + point.x, startPosition.z + point.z, exclusions)
     ) {
       return point;
     }
   }
-  return randomPoint(random, inner, outer);
+  throw new Error("Unable to place a grass instance outside its protected scene zones.");
+}
+
+function isInsideGrassExclusion(x, z, exclusions) {
+  return exclusions.some((zone) => {
+    if (zone.type === "circle") {
+      return Math.hypot(x - zone.x, z - zone.z) <= zone.radius;
+    }
+    return x >= zone.minX && x <= zone.maxX && z >= zone.minZ && z <= zone.maxZ;
+  });
 }
 
 function distanceToSegment(point, start, end) {
