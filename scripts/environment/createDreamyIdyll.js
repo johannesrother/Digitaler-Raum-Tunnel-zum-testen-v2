@@ -31,10 +31,15 @@ const HOUSE_DOOR_LOCAL_NORMAL = new BABYLON.Vector3(0, 0, 1);
 const EMBEDDED_GRASS_ROOT = "./assets/idylle/";
 const EMBEDDED_GRASS_FILE = "Gras.glb";
 // Gras.glb spans local Y -0.1469…0.1531. Its square plate's upper surface
-// was measured at about -0.140; keep that entire surface 4 cm below meadow.
+// was measured at about -0.140. It is part of the same mesh as the flowers,
+// so bury the whole plate beneath the lowest terrain point it spans.
 const EMBEDDED_GRASS_PLATE_TOP_Y = -0.14;
-const EMBEDDED_GRASS_PLATE_BURY = 0.04;
+const EMBEDDED_GRASS_PLATE_HALF_EXTENT = 0.96;
+const EMBEDDED_GRASS_PLATE_BURY = 0.08;
 const EMBEDDED_GRASS_CLUSTER_CENTERS = [
+  // Foreground / near meadow: visible from the initial camera while still
+  // outside the house, path, and Rift exclusion areas.
+  [-12, -10], [12, -11], [-24, -8], [22, -6], [-18, 8], [16, 8],
   [-26, -18], [17, -17], [-29, 14], [22, 16],
   [4, 32], [-10, -35], [32, 0],
 ];
@@ -144,7 +149,7 @@ function createEmbeddedGrassPatches(world, startPosition, source, house, vegetat
   const patches = createEmbeddedGrassPatchLayout(startPosition, house, vegetationEntries);
   patches.forEach((patch, index) => {
     const instance = source.createInstance(`dreamy-embedded-grass-patch-${index + 1}`);
-    const groundY = getMeadowHeight(startPosition.x + patch.x, startPosition.z + patch.z, startPosition);
+    const groundY = getEmbeddedGrassPlateGroundY(patch, startPosition);
     instance.parent = world;
     instance.position.set(
       startPosition.x + patch.x,
@@ -156,6 +161,24 @@ function createEmbeddedGrassPatches(world, startPosition, source, house, vegetat
     instance.isPickable = false;
     instance.receiveShadows = false;
   });
+}
+
+function getEmbeddedGrassPlateGroundY(patch, startPosition) {
+  let lowestGroundY = Number.POSITIVE_INFINITY;
+  const cosine = Math.cos(patch.rotation);
+  const sine = Math.sin(patch.rotation);
+  // The source plate is a rotated square. Sampling its center, edges, and
+  // corners avoids a downhill edge ever poking through the rolling meadow.
+  [-1, -0.5, 0, 0.5, 1].forEach((horizontal) => {
+    [-1, -0.5, 0, 0.5, 1].forEach((vertical) => {
+      const localX = horizontal * EMBEDDED_GRASS_PLATE_HALF_EXTENT * patch.scale;
+      const localZ = vertical * EMBEDDED_GRASS_PLATE_HALF_EXTENT * patch.scale;
+      const worldX = startPosition.x + patch.x + localX * cosine - localZ * sine;
+      const worldZ = startPosition.z + patch.z + localX * sine + localZ * cosine;
+      lowestGroundY = Math.min(lowestGroundY, getMeadowHeight(worldX, worldZ, startPosition));
+    });
+  });
+  return lowestGroundY;
 }
 
 function createEmbeddedGrassPatchLayout(startPosition, house, vegetationEntries) {
