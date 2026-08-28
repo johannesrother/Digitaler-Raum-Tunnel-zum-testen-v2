@@ -55,6 +55,7 @@ export async function createDreamyIdyll(scene, startPosition) {
   const lights = createDreamyLighting(scene);
   const libraries = await loadNatureLibraries(scene, world);
   const vegetation = placeNature(scene, world, libraries, startPosition, house, meadow);
+  vegetation.buildGrass();
   const atmosphere = createAtmosphere(scene, world, startPosition, vegetation.swayAnchors, sky);
 
   return {
@@ -65,6 +66,7 @@ export async function createDreamyIdyll(scene, startPosition) {
     house,
     lights,
     vegetation,
+    buildGrass: vegetation.buildGrass,
     startPosition: new BABYLON.Vector3(
       startPosition.x,
       getMeadowHeight(startPosition.x, startPosition.z, startPosition),
@@ -420,20 +422,22 @@ function placeNature(scene, world, libraries, startPosition, house, meadow) {
     add(libraries[library], `dreamy-rock-${index}`, { x: startPosition.x + x, z: startPosition.z + z, scale, rotation, yOffset: -0.14 }, "rocks");
   });
 
-  // Grass is populated last, after every static prop has an evaluated world
-  // bound.  The exclusion data is computed once here; thin instances require
-  // no raycasts or placement work during rendering.
+  // Grass is generated only after every house and nature prop has been
+  // instantiated, so its surface samples and occupancy checks use final data.
   const grassExclusions = createGrassExclusions(house, entries);
-  counts.grass = createDenseGrassField(
-    libraries.Grass_Common_Short,
-    startPosition,
-    random,
-    DENSE_GRASS_ZONES,
-    GRASS_SCALE_RANGE,
-    grassExclusions,
-    meadow,
-  );
-  return { counts, swayAnchors, entries };
+  const buildGrass = () => {
+    counts.grass = createDenseGrassField(
+      libraries.Grass_Common_Short,
+      meadow,
+      startPosition,
+      random,
+      DENSE_GRASS_ZONES,
+      GRASS_SCALE_RANGE,
+      grassExclusions,
+    );
+    return counts.grass;
+  };
+  return { counts, swayAnchors, entries, buildGrass };
 }
 
 function createInstanceGroup(scene, world, library, name, placement, startPosition) {
@@ -451,16 +455,17 @@ function createInstanceGroup(scene, world, library, name, placement, startPositi
   return anchor;
 }
 
-function createDenseGrassField(library, startPosition, random, zones, scaleRange, exclusions, meadow) {
+function createDenseGrassField(library, meadow, startPosition, random, zones, scaleRange, exclusions) {
   const mesh = library.meshes[0];
   // The asset's origin sits slightly above its lowest vertices.  Use its real
   // local bound, rather than a guessed offset, so every instance meets the
   // same height function that generated the meadow beneath it.
   const assetBottom = mesh.getBoundingInfo().boundingBox.minimum.y;
-  return createThinInstanceField(mesh, startPosition, random, zones, scaleRange, assetBottom, exclusions, meadow);
+  const sampler = createMeadowSurfaceSampler(meadow);
+  return createThinInstanceField(mesh, sampler, startPosition, random, zones, scaleRange, assetBottom, exclusions);
 }
 
-function createThinInstanceField(mesh, startPosition, random, zones, scaleRange, assetBottom, exclusions, meadow) {
+function createThinInstanceField(mesh, sampler, startPosition, random, zones, scaleRange, assetBottom, exclusions) {
   const count = zones.reduce((total, zone) => total + zone.count, 0);
   const matrices = new Float32Array(count * 16);
   const scaling = new BABYLON.Vector3();
@@ -471,16 +476,13 @@ function createThinInstanceField(mesh, startPosition, random, zones, scaleRange,
 
   zones.forEach((zone) => {
     for (let zoneIndex = 0; zoneIndex < zone.count; zoneIndex += 1) {
-      const point = randomMeadowPoint(random, zone.innerRadius, zone.outerRadius, startPosition, exclusions, meadow);
+      const hit = randomMeadowSurfacePoint(random, sampler, zone, startPosition, exclusions);
       const scale = BABYLON.Scalar.Lerp(scaleRange[0], scaleRange[1], random());
       scaling.setAll(scale);
       position.set(
-        startPosition.x + point.x,
-        // getMeadowHeight is the exact height sampler used while constructing
-        // dreamy-rolling-meadow, so this is a terrain hit on the only valid
-        // receiver without testing arbitrary imported scene geometry.
-        getMeadowHeight(startPosition.x + point.x, startPosition.z + point.z, startPosition) - assetBottom * scale + GRASS_GROUND_OFFSET,
-        startPosition.z + point.z,
+        hit.point.x + hit.normal.x * GRASS_GROUND_OFFSET,
+        hit.point.y - assetBottom * scale + hit.normal.y * GRASS_GROUND_OFFSET,
+        hit.point.z + hit.normal.z * GRASS_GROUND_OFFSET,
       );
       BABYLON.Quaternion.RotationYawPitchRollToRef(random() * Math.PI * 2, 0, 0, rotation);
       BABYLON.Matrix.ComposeToRef(scaling, rotation, position, matrix);
@@ -639,52 +641,92 @@ function randomPoint(random, inner, outer) {
   return { x: Math.cos(angle) * radius, z: Math.sin(angle) * radius };
 }
 
-function randomMeadowPoint(random, inner, outer, startPosition, exclusions, meadow) {
+function createMeadowSurfaceSampler(meadow) {
+  const positions = meadow.getVerticesData(BABYLON.VertexBuffer.PositionKind);
+  const indices = meadow.getIndices();
+  if (!positions || !indices) {
+    throw new Error("The grass receiver has no readable surface geometry.");
+  }
+
+  meadow.computeWorldMatrix(true);
+  const worldMatrix = meadow.getWorldMatrix();
+  const triangles = [];
+  let totalArea = 0;
+  for (let index = 0; index < indices.length; index += 3) {
+    const first = readWorldVertex(positions, indices[index], worldMatrix);
+    const second = readWorldVertex(positions, indices[index + 1], worldMatrix);
+    const third = readWorldVertex(positions, indices[index + 2], worldMatrix);
+    const normal = BABYLON.Vector3.Cross(second.subtract(first), third.subtract(first));
+    const doubleArea = normal.length();
+    if (doubleArea === 0) continue;
+    normal.scaleInPlace(1 / doubleArea);
+    // Meadow indices are wound for inside-out rendering.  Grass grows on the
+    // physical upward surface, so orient the sampled normal accordingly.
+    if (normal.y < 0) normal.scaleInPlace(-1);
+    if (normal.y < MIN_GRASS_GROUND_NORMAL_Y) continue;
+    totalArea += doubleArea * 0.5;
+    triangles.push({ first, second, third, normal, cumulativeArea: totalArea });
+  }
+  if (triangles.length === 0) {
+    throw new Error("The grass receiver has no valid upward-facing triangles.");
+  }
+
+  return {
+    sample(random) {
+      const targetArea = random() * totalArea;
+      let low = 0;
+      let high = triangles.length - 1;
+      while (low < high) {
+        const middle = Math.floor((low + high) * 0.5);
+        if (triangles[middle].cumulativeArea < targetArea) low = middle + 1;
+        else high = middle;
+      }
+      const triangle = triangles[low];
+      const root = Math.sqrt(random());
+      const firstWeight = 1 - root;
+      const secondWeight = root * (1 - random());
+      const thirdWeight = 1 - firstWeight - secondWeight;
+      return {
+        point: triangle.first.scale(firstWeight)
+          .add(triangle.second.scale(secondWeight))
+          .add(triangle.third.scale(thirdWeight)),
+        normal: triangle.normal,
+      };
+    },
+  };
+}
+
+function readWorldVertex(positions, index, worldMatrix) {
+  const offset = index * 3;
+  return BABYLON.Vector3.TransformCoordinates(
+    new BABYLON.Vector3(positions[offset], positions[offset + 1], positions[offset + 2]),
+    worldMatrix,
+  );
+}
+
+function randomMeadowSurfacePoint(random, sampler, zone, startPosition, exclusions) {
   const entrance = {
     x: HOUSE_OFFSET.x,
     z: HOUSE_OFFSET.z - HOUSE_SCALE * 0.7114279866218567,
   };
-  for (let attempt = 0; attempt < 256; attempt += 1) {
-    const point = randomPoint(random, inner, outer);
+  for (let attempt = 0; attempt < 512; attempt += 1) {
+    const hit = sampler.sample(random);
+    const point = {
+      x: hit.point.x - startPosition.x,
+      z: hit.point.z - startPosition.z,
+    };
+    const distance = Math.hypot(point.x, point.z);
     if (
-      isValidGrassReceiver(point, startPosition, meadow)
+      distance >= zone.innerRadius
+      && distance <= zone.outerRadius
       && distanceToSegment(point, { x: 0, z: 0 }, entrance) >= HOUSE_PATH_GRASS_CLEARANCE
       && Math.hypot(point.x - entrance.x, point.z - entrance.z) >= HOUSE_ENTRANCE_CLEARANCE
       && !isInsideGrassExclusion(startPosition.x + point.x, startPosition.z + point.z, exclusions)
     ) {
-      return point;
+      return hit;
     }
   }
   throw new Error("Unable to place a grass instance outside its protected scene zones.");
-}
-
-function isValidGrassReceiver(point, startPosition, meadow) {
-  // `dreamy-rolling-meadow` is the sole grass receiver.  Its surface was
-  // generated directly from getMeadowHeight(), so this analytic evaluation
-  // is exact to the ground mesh without raycasting arbitrary imported GLBs.
-  if (!meadow.metadata?.grassReceiver) return false;
-
-  const distance = Math.hypot(point.x, point.z);
-  const angle = Math.atan2(point.z, point.x);
-  const meadowEdge = MEADOW_RADIUS
-    * (1 + Math.sin(angle * 5.0) * 0.025 + Math.sin(angle * 9.0 + 0.7) * 0.014);
-  if (distance > meadowEdge - 0.08) return false;
-
-  const normal = getMeadowSurfaceNormal(startPosition.x + point.x, startPosition.z + point.z, startPosition);
-  return normal.y >= MIN_GRASS_GROUND_NORMAL_Y;
-}
-
-function getMeadowSurfaceNormal(x, z, startPosition) {
-  const sampleDistance = 0.08;
-  const heightX = getMeadowHeight(x + sampleDistance, z, startPosition)
-    - getMeadowHeight(x - sampleDistance, z, startPosition);
-  const heightZ = getMeadowHeight(x, z + sampleDistance, startPosition)
-    - getMeadowHeight(x, z - sampleDistance, startPosition);
-  return new BABYLON.Vector3(
-    -heightX / (sampleDistance * 2),
-    1,
-    -heightZ / (sampleDistance * 2),
-  ).normalize();
 }
 
 function isInsideGrassExclusion(x, z, exclusions) {
