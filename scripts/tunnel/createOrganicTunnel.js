@@ -103,6 +103,7 @@ export function createOrganicTunnel(scene, options) {
     route,
     setEnabled(enabled) {
       mesh.setEnabled(enabled);
+      lights.enabled = enabled;
       lights.points.forEach((light) => light.setEnabled(enabled));
       lights.fill.setEnabled(enabled);
       lights.entryBacklight.setEnabled(enabled);
@@ -628,7 +629,14 @@ function createTunnelLights(scene, meshes, route) {
   whiteRoomSpill.range = WHITE_ROOM_SPILL_RANGE;
   whiteRoomSpill.intensity = 0;
   whiteRoomSpill.includedOnlyMeshes.push(...meshes);
-  return { points, fill, entryBacklight, whiteRoomSpill, rigs: GRAZING_LIGHT_RIGS };
+  return {
+    points,
+    fill,
+    entryBacklight,
+    whiteRoomSpill,
+    rigs: GRAZING_LIGHT_RIGS,
+    enabled: true,
+  };
 }
 
 function updateTunnelLights(lights, route, time, impulse) {
@@ -686,6 +694,22 @@ function updateTunnelLights(lights, route, time, impulse) {
       : baseColor;
     light.diffuse = BABYLON.Color3.Lerp(warmEntryLight, tunnelColor, entryTransition);
   });
+  prioritizeTunnelLights(lights, time);
+}
+
+function prioritizeTunnelLights(lights, time) {
+  if (!lights.enabled) return;
+  const early = time < 20;
+  const late = time >= WHITE_ROOM_SPILL_START;
+  const activeGrazing = early
+    ? [0, 1]
+    : late
+      ? [2, 5]
+      : [1, 2, 5];
+  lights.entryBacklight.setEnabled(early);
+  lights.fill.setEnabled(true);
+  lights.points.forEach((light, index) => light.setEnabled(activeGrazing.includes(index)));
+  lights.whiteRoomSpill.setEnabled(late);
 }
 
 function createTexture(scene, url, tiling, gammaSpace) {
