@@ -7,6 +7,21 @@ const PACK_ROOT = "./assets/idylle%20pack/glTF/";
 const TOON_SKYDOME_ROOT = "./assets/idylle/";
 const TOON_SKYDOME_FILE = "Toon Skydome.glb";
 const TOON_SKYDOME_SCALE = 13;
+const HORIZON_HILLS_ROOT = "./assets/idylle/";
+const HORIZON_HILLS_FILE = "hügel.glb";
+
+const HORIZON_HILL_LAYOUT = [
+  { angle: 0.08, radius: 134, scale: [31, 15, 22], yaw: -0.64 },
+  { angle: 0.68, radius: 142, scale: [26, 13, 18], yaw: 0.32 },
+  { angle: 1.32, radius: 130, scale: [36, 18, 24], yaw: 1.05 },
+  { angle: 1.96, radius: 146, scale: [28, 14, 20], yaw: -1.12 },
+  { angle: 2.6, radius: 136, scale: [34, 17, 23], yaw: 0.7 },
+  { angle: 3.2, radius: 144, scale: [25, 12, 18], yaw: -0.28 },
+  { angle: 3.78, radius: 132, scale: [38, 19, 25], yaw: 1.18 },
+  { angle: 4.38, radius: 148, scale: [27, 13, 19], yaw: -0.9 },
+  { angle: 5.0, radius: 138, scale: [33, 16, 22], yaw: 0.46 },
+  { angle: 5.64, radius: 145, scale: [29, 14, 20], yaw: -1.3 },
+];
 
 /**
  * The one visible idyll world.  It intentionally contains only a small,
@@ -15,7 +30,7 @@ const TOON_SKYDOME_SCALE = 13;
 export async function createDreamyIdyll(scene, startPosition) {
   const world = new BABYLON.TransformNode("dreamy-idyll-world", scene);
   const meadow = createRollingMeadow(scene, world, startPosition);
-  const mountains = createDistantMountainLayers(scene, world, startPosition);
+  const mountains = await createDistantMountainLayers(scene, world, startPosition);
   const sky = await createDreamySky(scene, world, startPosition);
   const lights = createDreamyLighting(scene);
   const libraries = await loadNatureLibraries(scene, world);
@@ -112,53 +127,46 @@ function getMeadowHeight(x, z, startPosition) {
   return (broad + soft) * fade + edgeLift;
 }
 
-function createDistantMountainLayers(scene, world, startPosition) {
-  const layers = [
-    { radius: 74, base: 4.2, amplitude: 6.2, color: "#6e8876", alpha: 0.48, phase: 0.3 },
-    { radius: 112, base: 7.6, amplitude: 10.4, color: "#91a79b", alpha: 0.54, phase: 1.7 },
-    { radius: 156, base: 12.4, amplitude: 15.2, color: "#c1cdc4", alpha: 0.62, phase: 3.4 },
-  ];
-  return layers.map((layer, index) => createMountainLayer(scene, world, startPosition, layer, index));
-}
+async function createDistantMountainLayers(scene, world, startPosition) {
+  const container = await BABYLON.SceneLoader.LoadAssetContainerAsync(
+    HORIZON_HILLS_ROOT,
+    HORIZON_HILLS_FILE,
+    scene,
+  );
+  container.addAllToScene();
 
-function createMountainLayer(scene, world, startPosition, layer, layerIndex) {
-  const sectors = 96;
-  const positions = [];
-  const indices = [];
-  for (let index = 0; index <= sectors; index += 1) {
-    const angle = index / sectors * Math.PI * 2;
-    const x = startPosition.x + Math.cos(angle) * layer.radius;
-    const z = startPosition.z + Math.sin(angle) * layer.radius;
-    const ridgeSeed = Math.sin(angle * 2.35 + layer.phase) * 0.72
-      + Math.sin(angle * 5.1 - layer.phase * 0.7) * 0.28
-      + Math.sin(angle * 8.4 + layer.phase * 1.4) * 0.12;
-    const broadShape = 0.16 + Math.pow(Math.max(0, ridgeSeed), 1.65) * 1.22;
-    const height = layer.base + layer.amplitude * broadShape;
-    positions.push(x, -1.2, z, x, height, z);
+  const source = container.meshes.find((mesh) => mesh.getTotalVertices() > 0);
+  if (!source) {
+    throw new Error("Hügel GLB did not contain a renderable mesh.");
   }
-  for (let index = 0; index < sectors; index += 1) {
-    const lower = index * 2;
-    indices.push(lower, lower + 1, lower + 2, lower + 1, lower + 3, lower + 2);
-  }
-  const mesh = new BABYLON.Mesh(`dreamy-distant-mountain-layer-${layerIndex}`, scene);
-  const vertexData = new BABYLON.VertexData();
-  vertexData.positions = positions;
-  vertexData.indices = indices;
-  vertexData.normals = [];
-  BABYLON.VertexData.ComputeNormals(positions, indices, vertexData.normals);
-  vertexData.applyToMesh(mesh);
-  const material = new BABYLON.StandardMaterial(`dreamy-distant-mountain-material-${layerIndex}`, scene);
-  const color = BABYLON.Color3.FromHexString(layer.color);
-  material.diffuseColor = color;
-  material.emissiveColor = color.scale(0.34);
-  material.specularColor = BABYLON.Color3.Black();
-  material.alpha = layer.alpha;
-  material.backFaceCulling = false;
-  material.fogEnabled = false;
-  mesh.material = material;
-  mesh.parent = world;
-  mesh.isPickable = false;
-  return mesh;
+
+  container.materials.forEach((material) => {
+    material.backFaceCulling = false;
+    material.fogEnabled = false;
+  });
+
+  const placeHill = (hill, mesh) => {
+    const [scaleX, scaleY, scaleZ] = hill.scale;
+    mesh.parent = world;
+    mesh.position.set(
+      startPosition.x + Math.cos(hill.angle) * hill.radius,
+      scaleY * 0.512 - 1.2,
+      startPosition.z + Math.sin(hill.angle) * hill.radius,
+    );
+    mesh.scaling.set(scaleX, scaleY, scaleZ);
+    mesh.rotation.y = hill.yaw;
+    mesh.isPickable = false;
+    mesh.receiveShadows = false;
+  };
+
+  placeHill(HORIZON_HILL_LAYOUT[0], source);
+  const hills = [source];
+  HORIZON_HILL_LAYOUT.slice(1).forEach((hill, index) => {
+    const instance = source.createInstance(`dreamy-horizon-hill-${index + 1}`);
+    placeHill(hill, instance);
+    hills.push(instance);
+  });
+  return hills;
 }
 
 async function createDreamySky(scene, world, startPosition) {
