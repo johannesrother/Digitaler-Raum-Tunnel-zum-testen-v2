@@ -4,6 +4,9 @@ const GRASS_INSTANCE_COUNT = 330;
 const WISPY_GRASS_INSTANCE_COUNT = 82;
 const POLLEN_COUNT = 34;
 const PACK_ROOT = "./assets/idylle%20pack/glTF/";
+const TOON_SKYDOME_ROOT = "./assets/idylle/";
+const TOON_SKYDOME_FILE = "Toon Skydome.glb";
+const TOON_SKYDOME_SCALE = 13;
 
 /**
  * The one visible idyll world.  It intentionally contains only a small,
@@ -13,7 +16,7 @@ export async function createDreamyIdyll(scene, startPosition) {
   const world = new BABYLON.TransformNode("dreamy-idyll-world", scene);
   const meadow = createRollingMeadow(scene, world, startPosition);
   const mountains = createDistantMountainLayers(scene, world, startPosition);
-  const sky = createDreamySky(scene, world);
+  const sky = await createDreamySky(scene, world, startPosition);
   const lights = createDreamyLighting(scene);
   const libraries = await loadNatureLibraries(scene, world);
   const vegetation = placeNature(scene, world, libraries, startPosition);
@@ -158,75 +161,38 @@ function createMountainLayer(scene, world, startPosition, layer, layerIndex) {
   return mesh;
 }
 
-function createDreamySky(scene, world) {
-  BABYLON.Effect.ShadersStore.dreamyIdyllSkyVertexShader = `
-    precision highp float;
-    attribute vec3 position;
-    uniform mat4 worldViewProjection;
-    varying vec3 vDirection;
-    void main(void) {
-      vDirection = normalize(position);
-      gl_Position = worldViewProjection * vec4(position, 1.0);
-    }
-  `;
-  BABYLON.Effect.ShadersStore.dreamyIdyllSkyFragmentShader = `
-    precision highp float;
-    varying vec3 vDirection;
-    uniform float time;
-    float softSpot(vec3 direction, vec3 center, float focus) {
-      return pow(max(dot(direction, normalize(center)), 0.0), focus);
-    }
-    void main(void) {
-      vec3 d = normalize(vDirection);
-      float h = clamp(d.y * 0.74 + 0.30, 0.0, 1.0);
-      vec3 horizon = vec3(1.0, 0.87, 0.81);
-      vec3 middle = vec3(0.69, 0.83, 0.92);
-      vec3 zenith = vec3(0.49, 0.70, 0.89);
-      vec3 color = mix(horizon, middle, smoothstep(0.04, 0.58, h));
-      color = mix(color, zenith, smoothstep(0.48, 0.96, h) * 0.66);
-      float horizonHaze = 1.0 - smoothstep(0.04, 0.28, h);
-      color = mix(color, vec3(1.0, 0.90, 0.84), horizonHaze * 0.15);
-      float azimuth = atan(d.z, d.x);
-      float ridge = 0.012 + sin(azimuth * 2.7 + 0.4) * 0.012 + sin(azimuth * 6.1 - 1.3) * 0.006;
-      float distantLand = 1.0 - smoothstep(ridge, ridge + 0.043, d.y);
-      color = mix(color, vec3(0.68, 0.75, 0.68), distantLand * 0.23);
-      float clouds = 0.0;
-      clouds += softSpot(d, vec3(0.42 + sin(time * 0.011) * 0.025, 0.29, 0.86), 105.0);
-      clouds += softSpot(d, vec3(0.57 + sin(time * 0.009 + 1.2) * 0.025, 0.33, 0.76), 138.0);
-      clouds += softSpot(d, vec3(-0.64 + sin(time * 0.007 + 2.4) * 0.02, 0.39, 0.65), 95.0);
-      clouds += softSpot(d, vec3(-0.49 + sin(time * 0.012 + 0.8) * 0.02, 0.43, 0.76), 145.0);
-      clouds += softSpot(d, vec3(-0.15 + sin(time * 0.008 + 4.2) * 0.03, 0.55, -0.82), 92.0);
-      clouds += softSpot(d, vec3(0.18 + sin(time * 0.01 + 3.1) * 0.025, 0.47, -0.87), 132.0);
-      color = mix(color, vec3(1.0, 0.97, 0.92), min(clouds, 1.0) * 0.2);
-      float sun = softSpot(d, vec3(-0.68, 0.1, 0.72), 1750.0);
-      color = mix(color, vec3(1.0, 0.89, 0.70), sun * 0.54);
-      gl_FragColor = vec4(color, 1.0);
-    }
-  `;
-  const material = new BABYLON.ShaderMaterial(
-    "dreamy-pastel-sky-material",
-    scene,
-    { vertex: "dreamyIdyllSky", fragment: "dreamyIdyllSky" },
-    { attributes: ["position"], uniforms: ["worldViewProjection", "time"] },
-  );
-  material.backFaceCulling = false;
-  material.disableDepthWrite = true;
-  material.fogEnabled = false;
-  material.setFloat("time", 0);
-  const sky = BABYLON.MeshBuilder.CreateSphere(
-    "dreamy-pastel-sky",
-    { diameter: 700, segments: 32, sideOrientation: BABYLON.Mesh.BACKSIDE },
+async function createDreamySky(scene, world, startPosition) {
+  const container = await BABYLON.SceneLoader.LoadAssetContainerAsync(
+    TOON_SKYDOME_ROOT,
+    TOON_SKYDOME_FILE,
     scene,
   );
-  sky.parent = world;
-  sky.material = material;
-  sky.infiniteDistance = true;
+  container.addAllToScene();
+
+  const skyRoot = container.rootNodes[0];
+  const sky = container.meshes.find((mesh) => mesh.getTotalVertices() > 0);
+  if (!skyRoot || !sky) {
+    throw new Error("Toon Skydome did not contain a renderable sky mesh.");
+  }
+
+  // The source is a unit upper hemisphere.  This places its base at the idyll
+  // ground plane and expands it well beyond the 156 m outer mountain ring.
+  skyRoot.parent = world;
+  skyRoot.position.copyFrom(startPosition);
+  skyRoot.scaling.scaleInPlace(TOON_SKYDOME_SCALE);
   sky.isPickable = false;
+  sky.infiniteDistance = false;
+  sky.receiveShadows = false;
+  sky.alwaysSelectAsActiveMesh = true;
+  container.materials.forEach((material) => {
+    material.backFaceCulling = false;
+    material.disableDepthWrite = true;
+    material.fogEnabled = false;
+  });
+
   return {
     sky,
-    update(time) {
-      material.setFloat("time", time);
-    },
+    update() {},
   };
 }
 
