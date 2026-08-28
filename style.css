@@ -25,6 +25,9 @@ body {
 }
 
 #renderCanvas {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
   touch-action: none;
   outline: none;
 }
@@ -32,25 +35,20 @@ body {
 .experience-start-screen {
   position: fixed;
   inset: 0;
-  z-index: 20;
+  z-index: 1000;
   display: grid;
   place-items: center;
   overflow: hidden;
   color: #fff;
-  background-color: #15202a;
-  background-image: linear-gradient(rgb(10 18 22 / 16%), rgb(10 18 22 / 30%)), url("./assets/ui/idyll-start.jpg");
-  background-position: center;
-  background-size: cover;
+  width: 100vw;
+  height: 100vh;
+  background: #15202a url("./assets/ui/idyll-start.jpg") center center / cover no-repeat;
   opacity: 1;
   transition: opacity 0.8s ease;
 }
 
 .experience-start-screen::before {
-  position: absolute;
-  inset: 0;
-  content: "";
-  background: rgb(11 19 22 / 14%);
-  transition: background 0.4s ease;
+  display: none;
 }
 
 .experience-start-screen--leaving {
