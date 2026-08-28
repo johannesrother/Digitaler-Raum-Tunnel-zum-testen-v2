@@ -1,7 +1,11 @@
 const MEADOW_RADIUS = 55;
 const NEAR_GRASS_RADIUS = 25;
-const GRASS_INSTANCE_COUNT = 330;
-const WISPY_GRASS_INSTANCE_COUNT = 82;
+const GRASS_INSTANCE_COUNT = 1650;
+const WISPY_GRASS_INSTANCE_COUNT = 360;
+const GRASS_SCALE_RANGE = [0.27, 0.49];
+const WISPY_GRASS_SCALE_RANGE = [0.24, 0.44];
+const HOUSE_APPROACH_CLEARANCE = 1.7;
+const HOUSE_ENTRANCE_CLEARANCE = 2.5;
 const POLLEN_COUNT = 34;
 const PACK_ROOT = "./assets/idylle%20pack/glTF/";
 const TOON_SKYDOME_ROOT = "./assets/idylle/";
@@ -353,17 +357,17 @@ function placeNature(scene, world, libraries, startPosition) {
   };
 
   for (let index = 0; index < GRASS_INSTANCE_COUNT; index += 1) {
-    const point = randomPoint(random, 1.8, NEAR_GRASS_RADIUS);
+    const point = randomMeadowPoint(random, 1.8, NEAR_GRASS_RADIUS);
     add(libraries.Grass_Common_Short, `meadow-grass-${index}`, {
       x: startPosition.x + point.x, z: startPosition.z + point.z,
-      scale: 0.72 + random() * 0.58, rotation: random() * Math.PI * 2,
+      scale: BABYLON.Scalar.Lerp(GRASS_SCALE_RANGE[0], GRASS_SCALE_RANGE[1], random()), rotation: random() * Math.PI * 2,
     }, "grass");
   }
   for (let index = 0; index < WISPY_GRASS_INSTANCE_COUNT; index += 1) {
-    const point = randomPoint(random, 7, NEAR_GRASS_RADIUS + 5);
+    const point = randomMeadowPoint(random, 7, NEAR_GRASS_RADIUS + 5);
     add(libraries.Grass_Wispy_Tall, `meadow-wispy-grass-${index}`, {
       x: startPosition.x + point.x, z: startPosition.z + point.z,
-      scale: 0.68 + random() * 0.56, rotation: random() * Math.PI * 2,
+      scale: BABYLON.Scalar.Lerp(WISPY_GRASS_SCALE_RANGE[0], WISPY_GRASS_SCALE_RANGE[1], random()), rotation: random() * Math.PI * 2,
     }, "wispyGrass");
   }
 
@@ -484,6 +488,31 @@ function randomPoint(random, inner, outer) {
   const radius = Math.sqrt(random() * (outer * outer - inner * inner) + inner * inner);
   const angle = random() * Math.PI * 2;
   return { x: Math.cos(angle) * radius, z: Math.sin(angle) * radius };
+}
+
+function randomMeadowPoint(random, inner, outer) {
+  const entrance = {
+    x: HOUSE_OFFSET.x,
+    z: HOUSE_OFFSET.z - HOUSE_SCALE * 0.7114279866218567,
+  };
+  for (let attempt = 0; attempt < 24; attempt += 1) {
+    const point = randomPoint(random, inner, outer);
+    if (
+      distanceToSegment(point, { x: 0, z: 0 }, entrance) >= HOUSE_APPROACH_CLEARANCE
+      && Math.hypot(point.x - entrance.x, point.z - entrance.z) >= HOUSE_ENTRANCE_CLEARANCE
+    ) {
+      return point;
+    }
+  }
+  return randomPoint(random, inner, outer);
+}
+
+function distanceToSegment(point, start, end) {
+  const dx = end.x - start.x;
+  const dz = end.z - start.z;
+  const lengthSquared = dx * dx + dz * dz;
+  const t = BABYLON.Scalar.Clamp(((point.x - start.x) * dx + (point.z - start.z) * dz) / lengthSquared, 0, 1);
+  return Math.hypot(point.x - (start.x + dx * t), point.z - (start.z + dz * t));
 }
 
 function createRandom(seed) {
