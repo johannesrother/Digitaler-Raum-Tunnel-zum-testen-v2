@@ -12,7 +12,7 @@ const HORIZON_HILLS_FILE = "hügel.glb";
 const HOUSE_ROOT = "./assets/idylle/";
 const HOUSE_FILE = "Haus.glb";
 const HOUSE_SCALE = 4.6;
-const HOUSE_OFFSET = new BABYLON.Vector3(-2.8, 0, 20.7);
+const HOUSE_OFFSET = new BABYLON.Vector3(-9, 0, 20.7);
 
 const HORIZON_HILL_LAYOUT = [
   { angle: 0.08, radius: 134, scale: [31, 15, 22], yaw: -0.64 },
