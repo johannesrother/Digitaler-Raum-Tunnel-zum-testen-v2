@@ -371,10 +371,12 @@ function getPressureWaveInfluence(time, targetIndex) {
 
 function getFinalFunnelDiameter(time) {
   const baseDiameter = getTunnelDiameter(time);
-  const finalProgress = smoothstep((time - 48) / 12);
-  // At the tightest point the varying cross-section yields an approximately
-  // 0.3 m visual aperture, while the uncollided camera path remains central.
-  return BABYLON.Scalar.Lerp(baseDiameter, 0.38, finalProgress);
+  // A second smooth envelope starts in the final third. It retains the broad,
+  // organic profile while making the last approach increasingly claustrophobic.
+  const finalProgress = smoothstep((time - 42) / 18);
+  // The visual shell resolves to a 0.30 m mean diameter at the endpoint. The
+  // central route remains unchanged and the tunnel mesh remains uncollided.
+  return BABYLON.Scalar.Lerp(baseDiameter, 0.3, finalProgress);
 }
 
 function bell(value, center, width) {

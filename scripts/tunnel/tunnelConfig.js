@@ -2,18 +2,19 @@ export const TUNNEL_DURATION = 60;
 
 export const TUNNEL_PHASES = [
   { id: "ENTRY", start: 0, end: 10, diameter: 3.5, detail: 0.08, red: 0, light: 0.92, twitchEvery: 0 },
-  { id: "UNEASE", start: 10, end: 22, diameter: 3.0, detail: 0.22, red: 0.05, light: 0.7, twitchEvery: 8.2 },
-  { id: "COMPRESSION", start: 22, end: 36, diameter: 2.4, detail: 0.44, red: 0.16, light: 0.5, twitchEvery: 6.1 },
-  { id: "INTENSIFICATION", start: 36, end: 48, diameter: 2.0, detail: 0.62, red: 0.32, light: 0.38, twitchEvery: 4.2 },
-  { id: "PEAK", start: 48, end: 56, diameter: 1.65, detail: 0.86, red: 0.62, light: 0.28, twitchEvery: 2.7 },
-  { id: "FINAL_ASCENT", start: 56, end: 60, diameter: 1.5, detail: 0.78, red: 0.4, light: 0.34, twitchEvery: 4.6 },
+  { id: "UNEASE", start: 10, end: 22, diameter: 2.45, detail: 0.22, red: 0.05, light: 0.7, twitchEvery: 8.2 },
+  { id: "COMPRESSION", start: 22, end: 36, diameter: 1.65, detail: 0.44, red: 0.16, light: 0.5, twitchEvery: 6.1 },
+  { id: "INTENSIFICATION", start: 36, end: 48, diameter: 0.98, detail: 0.62, red: 0.32, light: 0.38, twitchEvery: 4.2 },
+  { id: "PEAK", start: 48, end: 56, diameter: 0.42, detail: 0.86, red: 0.62, light: 0.28, twitchEvery: 2.7 },
+  { id: "FINAL_ASCENT", start: 56, end: 60, diameter: 0.3, detail: 0.78, red: 0.4, light: 0.34, twitchEvery: 4.6 },
 ];
 
-// Small releases stop the narrowing from becoming a mechanically linear ramp.
+// Smoothly joined keys establish an early, accelerating constriction. The
+// dense terminal keys preserve a continuous organic funnel rather than steps.
 const DIAMETER_KEYS = [
-  [0, 3.5], [10, 3.2], [16, 3.3], [22, 2.9], [28, 2.7],
-  [31, 2.48], [34, 2.68], [36, 2.35], [42, 2.12], [48, 2.0],
-  [52, 1.74], [56, 1.65], [60, 1.5],
+  [0, 3.5], [5, 3.42], [10, 3.05], [20, 2.55], [30, 1.95],
+  [40, 1.38], [48, 0.98], [52, 0.68], [55, 0.46], [58, 0.33],
+  [60, 0.3],
 ];
 
 export function getTunnelPhase(time) {
