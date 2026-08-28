@@ -1,12 +1,20 @@
 const MEADOW_RADIUS = 55;
-const NEAR_GRASS_RADIUS = 25;
-const GRASS_INSTANCE_COUNT = 6000;
-const NEAR_GRASS_INSTANCE_COUNT = 4800;
-const WISPY_GRASS_INSTANCE_COUNT = 600;
-const GRASS_SCALE_RANGE = [0.17, 0.32];
-const WISPY_GRASS_SCALE_RANGE = [0.15, 0.29];
-const HOUSE_APPROACH_CLEARANCE = 1.7;
-const HOUSE_ENTRANCE_CLEARANCE = 2.5;
+const DENSE_GRASS_ZONES = [
+  { count: 6000, innerRadius: 1.8, outerRadius: 22 },
+  { count: 6000, innerRadius: 22, outerRadius: 42 },
+  { count: 2000, innerRadius: 42, outerRadius: 58 },
+];
+const DENSE_GROUND_COVER_ZONES = [
+  { count: 25000, innerRadius: 1.8, outerRadius: 22 },
+  { count: 22000, innerRadius: 22, outerRadius: 42 },
+  { count: 13000, innerRadius: 42, outerRadius: 58 },
+];
+const WISPY_GRASS_INSTANCE_COUNT = 400;
+const GRASS_SCALE_RANGE = [0.1, 0.2];
+const WISPY_GRASS_SCALE_RANGE = [0.09, 0.17];
+const GROUND_COVER_SCALE_RANGE = [0.74, 1.16];
+const HOUSE_APPROACH_CLEARANCE = 1.15;
+const HOUSE_ENTRANCE_CLEARANCE = 2.1;
 const POLLEN_COUNT = 34;
 const PACK_ROOT = "./assets/idylle%20pack/glTF/";
 const TOON_SKYDOME_ROOT = "./assets/idylle/";
@@ -357,21 +365,13 @@ function placeNature(scene, world, libraries, startPosition) {
     }
   };
 
-  for (let index = 0; index < GRASS_INSTANCE_COUNT; index += 1) {
-    const outerRadius = index < NEAR_GRASS_INSTANCE_COUNT ? 16 : NEAR_GRASS_RADIUS;
-    const point = randomMeadowPoint(random, 1.8, outerRadius);
-    add(libraries.Grass_Common_Short, `meadow-grass-${index}`, {
-      x: startPosition.x + point.x, z: startPosition.z + point.z,
-      scale: BABYLON.Scalar.Lerp(GRASS_SCALE_RANGE[0], GRASS_SCALE_RANGE[1], random()), rotation: random() * Math.PI * 2,
-    }, "grass");
-  }
-  for (let index = 0; index < WISPY_GRASS_INSTANCE_COUNT; index += 1) {
-    const point = randomMeadowPoint(random, 7, NEAR_GRASS_RADIUS + 5);
-    add(libraries.Grass_Wispy_Tall, `meadow-wispy-grass-${index}`, {
-      x: startPosition.x + point.x, z: startPosition.z + point.z,
-      scale: BABYLON.Scalar.Lerp(WISPY_GRASS_SCALE_RANGE[0], WISPY_GRASS_SCALE_RANGE[1], random()), rotation: random() * Math.PI * 2,
-    }, "wispyGrass");
-  }
+  const grassCount = createDenseGrassField(libraries.Grass_Common_Short, startPosition, random, DENSE_GRASS_ZONES, GRASS_SCALE_RANGE);
+  const groundCoverCount = createDenseGroundCover(scene, world, startPosition, random);
+  const wispyGrassCount = createDenseGrassField(libraries.Grass_Wispy_Tall, startPosition, random, [
+    { count: WISPY_GRASS_INSTANCE_COUNT, innerRadius: 7, outerRadius: 58 },
+  ], WISPY_GRASS_SCALE_RANGE);
+  counts.grass = grassCount + groundCoverCount;
+  counts.wispyGrass = wispyGrassCount;
 
   const treePlacements = [
     ["CommonTree_1", -18, -5, 1.36, 0.4], ["CommonTree_2", 13, 7, 1.2, 5.4],
@@ -447,6 +447,96 @@ function createInstanceGroup(scene, world, library, name, placement, startPositi
     instance.receiveShadows = false;
   });
   return anchor;
+}
+
+function createDenseGrassField(library, startPosition, random, zones, scaleRange) {
+  const mesh = library.meshes[0];
+  return createThinInstanceField(mesh, startPosition, random, zones, scaleRange, 0);
+}
+
+function createDenseGroundCover(scene, world, startPosition, random) {
+  const mesh = createMeadowBladeCluster(scene);
+  mesh.parent = world;
+  const material = new BABYLON.StandardMaterial("dreamy-dense-meadow-ground-cover-material", scene);
+  material.diffuseColor = BABYLON.Color3.FromHexString("#347632");
+  material.emissiveColor = BABYLON.Color3.FromHexString("#0b2a10");
+  material.specularColor = BABYLON.Color3.Black();
+  material.backFaceCulling = false;
+  mesh.material = material;
+  mesh.isPickable = false;
+  mesh.receiveShadows = false;
+  return createThinInstanceField(mesh, startPosition, random, DENSE_GROUND_COVER_ZONES, GROUND_COVER_SCALE_RANGE, 0);
+}
+
+function createMeadowBladeCluster(scene) {
+  const mesh = new BABYLON.Mesh("dreamy-dense-meadow-ground-cover", scene);
+  const positions = [];
+  const indices = [];
+  const normals = [];
+  const halfWidth = 0.07;
+  const height = 0.24;
+
+  [0, Math.PI / 3, (Math.PI * 2) / 3].forEach((angle) => {
+    const sideX = Math.cos(angle) * halfWidth;
+    const sideZ = Math.sin(angle) * halfWidth;
+    const leanX = Math.sin(angle) * 0.032;
+    const leanZ = -Math.cos(angle) * 0.032;
+    const base = positions.length / 3;
+    positions.push(
+      -sideX, 0, -sideZ,
+      sideX, 0, sideZ,
+      sideX * 0.32 + leanX, height, sideZ * 0.32 + leanZ,
+      -sideX * 0.32 + leanX, height, -sideZ * 0.32 + leanZ,
+    );
+    indices.push(base, base + 1, base + 2, base, base + 2, base + 3);
+  });
+
+  BABYLON.VertexData.ComputeNormals(positions, indices, normals);
+  const vertexData = new BABYLON.VertexData();
+  vertexData.positions = positions;
+  vertexData.indices = indices;
+  vertexData.normals = normals;
+  vertexData.applyToMesh(mesh);
+  return mesh;
+}
+
+function createThinInstanceField(mesh, startPosition, random, zones, scaleRange, yOffset) {
+  const count = zones.reduce((total, zone) => total + zone.count, 0);
+  const matrices = new Float32Array(count * 16);
+  const scaling = new BABYLON.Vector3();
+  const position = new BABYLON.Vector3();
+  const rotation = new BABYLON.Quaternion();
+  const matrix = BABYLON.Matrix.Identity();
+  let index = 0;
+
+  zones.forEach((zone) => {
+    for (let zoneIndex = 0; zoneIndex < zone.count; zoneIndex += 1) {
+      const point = randomMeadowPoint(random, zone.innerRadius, zone.outerRadius);
+      const scale = BABYLON.Scalar.Lerp(scaleRange[0], scaleRange[1], random());
+      scaling.setAll(scale);
+      position.set(
+        startPosition.x + point.x,
+        getMeadowHeight(startPosition.x + point.x, startPosition.z + point.z, startPosition) + yOffset * scale,
+        startPosition.z + point.z,
+      );
+      BABYLON.Quaternion.RotationYawPitchRollToRef(
+        random() * Math.PI * 2,
+        (random() - 0.5) * 0.08,
+        (random() - 0.5) * 0.08,
+        rotation,
+      );
+      BABYLON.Matrix.ComposeToRef(scaling, rotation, position, matrix);
+      matrix.copyToArray(matrices, index * 16);
+      index += 1;
+    }
+  });
+
+  mesh.isVisible = true;
+  mesh.thinInstanceSetBuffer("matrix", matrices, 16, true);
+  mesh.thinInstanceRefreshBoundingInfo(true);
+  mesh.isPickable = false;
+  mesh.receiveShadows = false;
+  return count;
 }
 
 function createAtmosphere(scene, world, startPosition, swayAnchors, sky) {
