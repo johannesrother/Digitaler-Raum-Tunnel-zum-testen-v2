@@ -156,6 +156,11 @@ body {
   line-height: 1.35;
 }
 
+/* Do not render the panel's frame when its only visible control is absent. */
+.runtime-panel:has(#enter-vr[hidden]) {
+  display: none;
+}
+
 .runtime-panel p {
   display: none;
 }
