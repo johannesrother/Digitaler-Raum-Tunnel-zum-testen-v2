@@ -123,12 +123,6 @@ export function createIdyllTunnelTransition(scene, options) {
       options.onSuctionStart?.();
     }
 
-    if (!portalClosed) {
-      // The full route mesh is too large to be a safe portal preview. Keep it
-      // completely out of the idyll until the existing spatial crossing;
-      // the Rift itself remains the dark, aperture-masked opening.
-      tunnelWorld.hide();
-    }
     // Start the already visible tunnel's wall motion before the visitor
     // crosses the rift. This avoids a second visual "start" at entry.
     options.tunnel.setSequenceActive(tunnelReveal > PORTAL_VISIBLE_THRESHOLD && !hasReachedWhiteRoom);
@@ -196,6 +190,16 @@ export function createIdyllTunnelTransition(scene, options) {
       tunnelReveal,
       tunnelEntryPrepared ? tunnelTime : -1,
     );
+    if (!portalClosed) {
+      // rift.update() activates the aperture stencil before this branch runs.
+      // The real tunnel can therefore be enabled only after its EQUAL stencil
+      // test is live, guaranteeing that it has no pixels outside the Rift.
+      if (tunnelReveal > PORTAL_VISIBLE_THRESHOLD) {
+        tunnelWorld.preview(tunnelReveal);
+      } else {
+        tunnelWorld.hide();
+      }
+    }
     if (!riftSoundStarted && riftIsVisiblyOpen) {
       riftSoundStarted = true;
       options.onRiftOpening?.();
@@ -1721,6 +1725,15 @@ function createTunnelWorldGroup(scene, options) {
       // The entrance light only joins once the rupture already has volume, so
       // it cannot spill onto the idyll before the reveal.
       entrance.daylight?.setEnabled(amount > 0.48);
+    },
+    preview(amount) {
+      // Pre-crossing, only the continuous tunnel mesh participates in the
+      // portal pass. Entrance helper meshes are deliberately kept disabled:
+      // they do not use the Rift stencil and could otherwise escape the
+      // aperture at its edges.
+      options.tunnel.setEnabled(true);
+      options.tunnel.mesh.visibility = originalVisibility.get(options.tunnel.mesh) * amount;
+      setEntranceEnabled(false);
     },
     closePortal() {
       // Once crossed, this is a hard invariant: Rift teardown or later
