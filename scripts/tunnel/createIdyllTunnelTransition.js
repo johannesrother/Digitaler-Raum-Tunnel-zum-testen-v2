@@ -694,7 +694,7 @@ function createSpacetimeRift(scene, entrance, tunnelStart, tunnelMesh, idyllWorl
       }
       const opening = smoothstep((elapsed - RIFT_TUNNEL_REVEAL_START) / (IDYLL_TRAVEL_DURATION - RIFT_TUNNEL_REVEAL_START));
       const apertureScale = (0.08 + formation * 0.78) * closure;
-      updateAperture(voidMesh, apertureScale, -0.13);
+      updateAperture(voidMesh, apertureScale, RIFT_APERTURE_MASK_DEPTH);
       if (!portalMaskPermanentlyClosed) {
         updateAperture(apertureMask, apertureScale, RIFT_APERTURE_MASK_DEPTH);
         setPortalMask(reveal > PORTAL_VISIBLE_THRESHOLD && !isClosing);
@@ -823,7 +823,7 @@ function createRealityShards(scene, center, lateral, forward, material) {
 }
 
 function createFractureEdgeHighlights(scene, center, lateral, forward) {
-  const toWorld = (x, y, depth = -0.18) => center.add(lateral.scale(x)).add(forward.scale(depth)).add(new BABYLON.Vector3(0, y, 0));
+  const toWorld = (x, y, depth = RIFT_APERTURE_MASK_DEPTH) => center.add(lateral.scale(x)).add(forward.scale(depth)).add(new BABYLON.Vector3(0, y, 0));
   const paths = [
     [[-1.78, -0.14], [-1.38, -0.6], [-0.72, -0.82]],
     [[-0.08, -0.63], [0.68, -0.78], [1.6, -0.4]],
@@ -842,7 +842,7 @@ function createFractureEdgeHighlights(scene, center, lateral, forward) {
 }
 
 function createShatterCracks(scene, center, lateral, forward) {
-  const toWorld = (x, y, depth = -0.16) => center.add(lateral.scale(x)).add(forward.scale(depth)).add(new BABYLON.Vector3(0, y, 0));
+  const toWorld = (x, y, depth = RIFT_APERTURE_MASK_DEPTH) => center.add(lateral.scale(x)).add(forward.scale(depth)).add(new BABYLON.Vector3(0, y, 0));
   const paths = [
     [[-1.2, 0.72], [-1.66, 1.02], [-2.0, 1.24]],
     [[0.82, 0.94], [1.2, 1.32], [1.62, 1.34]],

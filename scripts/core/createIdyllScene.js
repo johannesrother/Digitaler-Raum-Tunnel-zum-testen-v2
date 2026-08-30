@@ -24,9 +24,9 @@ export async function createIdyllScene(
   const dreamyIdyll = await createDreamyIdyll(scene, environment.startPosition);
   disableOldIdyllVisuals(environment);
   disablePreviousIdyllLighting(environment);
-  // The existing portal machinery receives a new spatial anchor only: the
-  // house facade. Its crossing, handoff, stencil and timing remain unchanged.
-  environment.architecture.entrance = dreamyIdyll.house.entrance;
+  // Rift, tunnel route and White Room share this independent landscape anchor.
+  // The house remains a static idyll object and provides no portal transform.
+  environment.architecture.entrance = createMeadowRiftEntrance();
   const desktopCamera = createDesktopCamera(
     scene,
     canvas,
@@ -117,6 +117,16 @@ export async function createIdyllScene(
   };
 
   return scene;
+}
+
+function createMeadowRiftEntrance() {
+  const center = new BABYLON.Vector3(-20, 0, 17.5);
+  const forward = new BABYLON.Vector3(0, 0, 1);
+  return {
+    center,
+    forward,
+    lateral: new BABYLON.Vector3(forward.z, 0, -forward.x),
+  };
 }
 
 function disablePreviousIdyllLighting(environment) {
