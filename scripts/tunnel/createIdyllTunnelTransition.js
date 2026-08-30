@@ -21,6 +21,7 @@ const RIFT_APPROACH_REMAINING_TIME = 3.4;
 const RIFT_CLOSE_DURATION = 1.4;
 const RIFT_CLOSURE_FADE_RANGE = 0.42;
 const RIFT_VISIBILITY_EPSILON = 0.002;
+const PORTAL_VISIBLE_THRESHOLD = 0.01;
 const RIFT_APERTURE_MASK_DEPTH = -0.145;
 const ENTRY_ROUTE_EASE_DURATION = 0.75;
 const FLASH_DEBUG_PRE_ENTRY_MS = 2000;
@@ -123,11 +124,14 @@ export function createIdyllTunnelTransition(scene, options) {
     }
 
     if (!portalClosed) {
-      tunnelWorld.reveal(tunnelReveal);
+      // The real tunnel may only become renderable in the same state that
+      // enables its aperture stencil. Otherwise a low-opacity but unmasked
+      // tunnel frame can appear across the house facade.
+      tunnelWorld.reveal(tunnelReveal > PORTAL_VISIBLE_THRESHOLD ? tunnelReveal : 0);
     }
     // Start the already visible tunnel's wall motion before the visitor
     // crosses the rift. This avoids a second visual "start" at entry.
-    options.tunnel.setSequenceActive(tunnelReveal > 0.01 && !hasReachedWhiteRoom);
+    options.tunnel.setSequenceActive(tunnelReveal > PORTAL_VISIBLE_THRESHOLD && !hasReachedWhiteRoom);
     if (elapsed < IDYLL_TRAVEL_DURATION) {
       applyPathTransform(root, tunnelRoute, riftApproachTime * calmTravelProgress(elapsed / IDYLL_TRAVEL_DURATION), initialHeading, delta);
     } else if (!hasReachedTunnelTimeline) {
@@ -689,7 +693,7 @@ function createSpacetimeRift(scene, entrance, tunnelStart, tunnelMesh, idyllWorl
       updateAperture(voidMesh, apertureScale, -0.13);
       if (!portalMaskPermanentlyClosed) {
         updateAperture(apertureMask, apertureScale, RIFT_APERTURE_MASK_DEPTH);
-        setPortalMask(reveal > 0.01 && !isClosing);
+        setPortalMask(reveal > PORTAL_VISIBLE_THRESHOLD && !isClosing);
       }
       voidMesh.mesh.visibility = BABYLON.Scalar.Clamp(formation * (1 - opening * 1.1), 0, 1)
         * closureVisibility;
@@ -700,7 +704,10 @@ function createSpacetimeRift(scene, entrance, tunnelStart, tunnelMesh, idyllWorl
           * closureVisibility;
         fragment.mesh.visibility = visibility;
         fragment.mesh.setEnabled(visibility > RIFT_VISIBILITY_EPSILON);
-        fragment.mesh.scaling.setAll(0.18 + formation * 0.82);
+        // Keep the decorative fragments local to the aperture edge. The house
+        // remains visually intact; these read as small spatial debris rather
+        // than as pieces of the facade.
+        fragment.mesh.scaling.setAll(0.04 + formation * 0.22);
         fragment.mesh.position.copyFrom(fragment.base
           .add(lateral.scale(fragment.lateralDrift * breakProgress))
           .add(forward.scale(fragment.depthDrift * breakProgress))
@@ -800,12 +807,24 @@ function createRealityShards(scene, center, lateral, forward, material) {
       tessellation: index % 3 === 0 ? 4 : 3,
       sideOrientation: BABYLON.Mesh.DOUBLESIDE,
     }, scene);
-    const base = center.add(lateral.scale(x)).add(forward.scale(depth)).add(new BABYLON.Vector3(0, y, 0));
+    const base = center
+      .add(lateral.scale(x * 0.58))
+      .add(forward.scale(depth * 0.5))
+      .add(new BABYLON.Vector3(0, y * 0.58, 0));
     mesh.position.copyFrom(base);
     mesh.rotation.set(0, heading, rotation);
     mesh.material = material;
     mesh.isPickable = false;
-    return { mesh, base, rotation: heading, tilt: rotation, lateralDrift, verticalDrift, depthDrift, spin };
+    return {
+      mesh,
+      base,
+      rotation: heading,
+      tilt: rotation,
+      lateralDrift: lateralDrift * 0.25,
+      verticalDrift: verticalDrift * 0.25,
+      depthDrift: depthDrift * 0.25,
+      spin,
+    };
   });
 }
 
