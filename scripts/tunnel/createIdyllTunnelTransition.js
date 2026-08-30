@@ -23,6 +23,9 @@ const RIFT_CLOSURE_FADE_RANGE = 0.42;
 const RIFT_VISIBILITY_EPSILON = 0.002;
 const PORTAL_VISIBLE_THRESHOLD = 0.01;
 const RIFT_APERTURE_MASK_DEPTH = -0.145;
+const RIFT_APERTURE_SCALE_FACTOR = 0.55;
+const RIFT_APERTURE_ROLL = BABYLON.Tools.ToRadians(-4);
+const RIFT_PREVIEW_MAX_DEPTH = 1.2;
 const ENTRY_ROUTE_EASE_DURATION = 0.75;
 const FLASH_DEBUG_PRE_ENTRY_MS = 2000;
 const FLASH_DEBUG_POST_ENTRY_MS = 3000;
@@ -510,12 +513,20 @@ function createSpacetimeRift(scene, entrance, tunnelStart, tunnelMesh, idyllWorl
   const center = tunnelStart.add(new BABYLON.Vector3(0, 1.65, 0));
   const lateral = entrance.lateral.clone();
   const forward = entrance.forward.clone();
-  const apertureShape = [
-    [-1.78, -0.14], [-1.38, -0.6], [-0.72, -0.82], [-0.08, -0.63],
-    [0.68, -0.78], [1.6, -0.4], [1.43, 0.02], [1.78, 0.3],
-    [0.92, 0.62], [0.18, 0.5], [-0.52, 0.76], [-1.26, 0.5],
-    [-1.84, 0.2],
-  ];
+  // A densely sampled, gently irregular oval reads as a membrane opening
+  // instead of the former thirteen-sided slab. The variation remains small
+  // enough for a reliable, gap-free stencil fan on Quest-class hardware.
+  const apertureShape = Array.from({ length: 28 }, (_, index) => {
+    const angle = Math.PI + index / 28 * Math.PI * 2;
+    const horizontalVariation = 1 + Math.sin(angle * 3 + 0.4) * 0.045
+      + Math.cos(angle * 7 - 0.2) * 0.022;
+    const verticalVariation = 1 + Math.cos(angle * 4 - 0.35) * 0.052
+      + Math.sin(angle * 7 + 0.6) * 0.018;
+    return [
+      Math.cos(angle) * 1.78 * horizontalVariation,
+      Math.sin(angle) * 0.82 * verticalVariation + Math.sin(angle * 2 + 0.7) * 0.035,
+    ];
+  });
   const fragmentMaterial = new BABYLON.StandardMaterial("spacetime-rift-shard-material", scene);
   fragmentMaterial.diffuseColor = BABYLON.Color3.FromHexString("#dcecf4");
   fragmentMaterial.emissiveColor = BABYLON.Color3.FromHexString("#7898b0");
@@ -523,10 +534,9 @@ function createSpacetimeRift(scene, entrance, tunnelStart, tunnelMesh, idyllWorl
   fragmentMaterial.backFaceCulling = false;
   fragmentMaterial.disableLighting = true;
   const voidMaterial = new BABYLON.StandardMaterial("spacetime-rift-charcoal-void-material", scene);
-  voidMaterial.diffuseColor = BABYLON.Color3.FromHexString("#070a10");
-  voidMaterial.emissiveColor = BABYLON.Color3.FromHexString("#10151d");
-  voidMaterial.specularColor = BABYLON.Color3.Black();
   voidMaterial.backFaceCulling = false;
+  voidMaterial.disableColorWrite = true;
+  voidMaterial.disableDepthWrite = true;
   const maskMaterial = new BABYLON.StandardMaterial("spacetime-rift-stencil-mask-material", scene);
   maskMaterial.backFaceCulling = false;
   maskMaterial.disableColorWrite = true;
@@ -545,7 +555,7 @@ function createSpacetimeRift(scene, entrance, tunnelStart, tunnelMesh, idyllWorl
   const entryPlaneNormal = forward.clone().normalize();
   const fragments = createRealityShards(scene, center, lateral, forward, fragmentMaterial);
   const cracks = createShatterCracks(scene, center, lateral, forward);
-  const edgeHighlights = createFractureEdgeHighlights(scene, center, lateral, forward);
+  const edgeHighlights = createFractureEdgeHighlights(scene, center, lateral, forward, apertureShape);
   const tunnelMaterial = tunnelMesh.material;
   const originalRenderGroup = tunnelMesh.renderingGroupId;
   const originalStencil = {
@@ -650,13 +660,18 @@ function createSpacetimeRift(scene, entrance, tunnelStart, tunnelMesh, idyllWorl
   };
 
   const setPoint = (positions, offset, x, y, depth) => {
-    positions[offset] = center.x + lateral.x * x + forward.x * depth;
-    positions[offset + 1] = center.y + y;
-    positions[offset + 2] = center.z + lateral.z * x + forward.z * depth;
+    const cosine = Math.cos(RIFT_APERTURE_ROLL);
+    const sine = Math.sin(RIFT_APERTURE_ROLL);
+    const rolledX = x * cosine - y * sine;
+    const rolledY = x * sine + y * cosine;
+    positions[offset] = center.x + lateral.x * rolledX + forward.x * depth;
+    positions[offset + 1] = center.y + rolledY;
+    positions[offset + 2] = center.z + lateral.z * rolledX + forward.z * depth;
   };
   const updateAperture = (aperture, scale, depth) => {
+    setPoint(aperture.positions, 0, 0, 0, depth);
     apertureShape.forEach(([x, y], index) => {
-      setPoint(aperture.positions, index * 3, x * scale, y * scale, depth);
+      setPoint(aperture.positions, (index + 1) * 3, x * scale, y * scale, depth);
     });
     aperture.mesh.updateVerticesData(BABYLON.VertexBuffer.PositionKind, aperture.positions, true);
   };
@@ -693,15 +708,17 @@ function createSpacetimeRift(scene, entrance, tunnelStart, tunnelMesh, idyllWorl
         return false;
       }
       const opening = smoothstep((elapsed - RIFT_TUNNEL_REVEAL_START) / (IDYLL_TRAVEL_DURATION - RIFT_TUNNEL_REVEAL_START));
-      const apertureScale = (0.08 + formation * 0.78) * closure;
+      const apertureScale = (0.08 + formation * 0.78) * RIFT_APERTURE_SCALE_FACTOR * closure;
       updateAperture(voidMesh, apertureScale, RIFT_APERTURE_MASK_DEPTH);
       if (!portalMaskPermanentlyClosed) {
         updateAperture(apertureMask, apertureScale, RIFT_APERTURE_MASK_DEPTH);
         setPortalMask(reveal > PORTAL_VISIBLE_THRESHOLD && !isClosing);
       }
-      voidMesh.mesh.visibility = BABYLON.Scalar.Clamp(formation * (1 - opening * 1.1), 0, 1)
-        * closureVisibility;
-      voidMesh.mesh.setEnabled(voidMesh.mesh.visibility > RIFT_VISIBILITY_EPSILON);
+      // The aperture is a mask, never a coloured polygon. Before the tunnel
+      // reveal there is only the fine Rift edge; afterwards the real tunnel
+      // is the sole colour source inside the stencil opening.
+      voidMesh.mesh.visibility = 0;
+      voidMesh.mesh.setEnabled(false);
       // These decorative triangles visually read as broken parts of the house
       // facade. Keep them disabled while the Rift opens so the house remains
       // wholly intact and the aperture is the only visible effect.
@@ -766,10 +783,13 @@ function createSpacetimeRift(scene, entrance, tunnelStart, tunnelMesh, idyllWorl
 }
 
 function createFracturedAperture(scene, name, material, pointCount) {
-  const positions = Array(pointCount * 3).fill(0);
+  // Vertex zero is a true centre point. A closed fan from the centre remains
+  // valid for the softly irregular contour and avoids long boundary-to-
+  // boundary triangles that made the old aperture read as faceted.
+  const positions = Array((pointCount + 1) * 3).fill(0);
   const indices = [];
-  for (let index = 1; index < pointCount - 1; index += 1) {
-    indices.push(0, index, index + 1);
+  for (let index = 0; index < pointCount; index += 1) {
+    indices.push(0, index + 1, (index + 1) % pointCount + 1);
   }
   const mesh = new BABYLON.Mesh(name, scene);
   const vertexData = new BABYLON.VertexData();
@@ -822,27 +842,44 @@ function createRealityShards(scene, center, lateral, forward, material) {
   });
 }
 
-function createFractureEdgeHighlights(scene, center, lateral, forward) {
-  const toWorld = (x, y, depth = RIFT_APERTURE_MASK_DEPTH) => center.add(lateral.scale(x)).add(forward.scale(depth)).add(new BABYLON.Vector3(0, y, 0));
+function createFractureEdgeHighlights(scene, center, lateral, forward, apertureShape) {
+  const toWorld = (x, y, depth = RIFT_APERTURE_MASK_DEPTH) => {
+    const scaledX = x * RIFT_APERTURE_SCALE_FACTOR;
+    const scaledY = y * RIFT_APERTURE_SCALE_FACTOR;
+    const cosine = Math.cos(RIFT_APERTURE_ROLL);
+    const sine = Math.sin(RIFT_APERTURE_ROLL);
+    const rolledX = scaledX * cosine - scaledY * sine;
+    const rolledY = scaledX * sine + scaledY * cosine;
+    return center.add(lateral.scale(rolledX)).add(forward.scale(depth)).add(new BABYLON.Vector3(0, rolledY, 0));
+  };
   const paths = [
-    [[-1.78, -0.14], [-1.38, -0.6], [-0.72, -0.82]],
-    [[-0.08, -0.63], [0.68, -0.78], [1.6, -0.4]],
-    [[1.43, 0.02], [1.78, 0.3], [0.92, 0.62]],
-    [[0.18, 0.5], [-0.52, 0.76], [-1.26, 0.5]],
+    apertureShape.slice(0, 5),
+    apertureShape.slice(6, 11),
+    apertureShape.slice(12, 17),
+    apertureShape.slice(18, 23),
+    [...apertureShape.slice(24), apertureShape[0]],
   ];
   return paths.map((path, index) => {
     const mesh = BABYLON.MeshBuilder.CreateLines(`spacetime-rift-fracture-edge-${index}`, {
       points: path.map(([x, y]) => toWorld(x, y)),
       updatable: false,
     }, scene);
-    mesh.color = BABYLON.Color3.FromHexString("#d6e5ec");
+    mesh.color = BABYLON.Color3.FromHexString("#b8ccd5");
     mesh.isPickable = false;
     return mesh;
   });
 }
 
 function createShatterCracks(scene, center, lateral, forward) {
-  const toWorld = (x, y, depth = RIFT_APERTURE_MASK_DEPTH) => center.add(lateral.scale(x)).add(forward.scale(depth)).add(new BABYLON.Vector3(0, y, 0));
+  const toWorld = (x, y, depth = RIFT_APERTURE_MASK_DEPTH) => {
+    const scaledX = x * RIFT_APERTURE_SCALE_FACTOR;
+    const scaledY = y * RIFT_APERTURE_SCALE_FACTOR;
+    const cosine = Math.cos(RIFT_APERTURE_ROLL);
+    const sine = Math.sin(RIFT_APERTURE_ROLL);
+    const rolledX = scaledX * cosine - scaledY * sine;
+    const rolledY = scaledX * sine + scaledY * cosine;
+    return center.add(lateral.scale(rolledX)).add(forward.scale(depth)).add(new BABYLON.Vector3(0, rolledY, 0));
+  };
   const paths = [
     [[-1.2, 0.72], [-1.66, 1.02], [-2.0, 1.24]],
     [[0.82, 0.94], [1.2, 1.32], [1.62, 1.34]],
@@ -1701,6 +1738,11 @@ function createTunnelWorldGroup(scene, options) {
   const allMeshes = [options.tunnel.mesh, ...entranceMeshes];
   const originalVisibility = new Map(allMeshes.map((mesh) => [mesh, mesh.visibility]));
   const originalEnabled = new Map(allMeshes.map((mesh) => [mesh, mesh.isEnabled()]));
+  const originalTunnelPosition = options.tunnel.mesh.position.clone();
+
+  const restoreTunnelPosition = () => {
+    options.tunnel.mesh.position.copyFrom(originalTunnelPosition);
+  };
 
   const setEntranceEnabled = (enabled) => {
     entranceMeshes.forEach((mesh) => mesh.setEnabled(enabled));
@@ -1709,6 +1751,7 @@ function createTunnelWorldGroup(scene, options) {
 
   return {
     hide() {
+      restoreTunnelPosition();
       options.tunnel.setEnabled(false);
       setEntranceEnabled(false);
     },
@@ -1717,6 +1760,7 @@ function createTunnelWorldGroup(scene, options) {
         this.hide();
         return;
       }
+      restoreTunnelPosition();
       options.tunnel.setEnabled(true);
       setEntranceEnabled(amount > 0.14);
       allMeshes.forEach((mesh) => {
@@ -1731,13 +1775,28 @@ function createTunnelWorldGroup(scene, options) {
       // portal pass. Entrance helper meshes are deliberately kept disabled:
       // they do not use the Rift stencil and could otherwise escape the
       // aperture at its edges.
+      // Hold the preview shell clearly behind the opening throughout the
+      // pre-crossing view. It approaches gently but retains 0.75 m of visual
+      // separation until the authoritative crossing restores the real mesh.
+      // Route, lights, camera and entry plane remain untouched.
+      const previewDepth = BABYLON.Scalar.Lerp(
+        RIFT_PREVIEW_MAX_DEPTH,
+        0.75,
+        smoothstep(amount),
+      );
+      options.tunnel.mesh.position.copyFrom(originalTunnelPosition)
+        .addInPlace(options.entrance.forward.scale(previewDepth));
       options.tunnel.setEnabled(true);
-      options.tunnel.mesh.visibility = originalVisibility.get(options.tunnel.mesh) * amount;
+      // The stencil contour already performs the visual reveal. Fading the
+      // PBR mesh itself made the real tunnel blend with the idyll background
+      // into a flat blue-grey polygon before its texture became opaque.
+      options.tunnel.mesh.visibility = originalVisibility.get(options.tunnel.mesh);
       setEntranceEnabled(false);
     },
     closePortal() {
       // Once crossed, this is a hard invariant: Rift teardown or later
       // cleanup may never leave a frame without the real tunnel renderable.
+      restoreTunnelPosition();
       options.tunnel.setEnabled(true);
       options.tunnel.mesh.visibility = originalVisibility.get(options.tunnel.mesh);
       // The idyll's sky mesh is disabled below, but Babylon still clears the
@@ -1756,6 +1815,7 @@ function createTunnelWorldGroup(scene, options) {
       options.onIdyllHidden?.();
     },
     reset() {
+      restoreTunnelPosition();
       allMeshes.forEach((mesh) => {
         mesh.visibility = originalVisibility.get(mesh);
         mesh.setEnabled(originalEnabled.get(mesh));
