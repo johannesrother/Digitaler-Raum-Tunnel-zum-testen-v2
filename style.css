@@ -42,7 +42,7 @@ body {
   color: #fff;
   width: 100vw;
   height: 100vh;
-  background: #15202a url("./assets/ui/idyll-start.jpg") center center / cover no-repeat;
+  background: #15202a url("./assets/ui/idyll-start.png") center center / cover no-repeat;
   opacity: 1;
   transition: opacity 0.8s ease;
 }
