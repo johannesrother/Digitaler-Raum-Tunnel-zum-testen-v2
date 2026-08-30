@@ -124,10 +124,10 @@ export function createIdyllTunnelTransition(scene, options) {
     }
 
     if (!portalClosed) {
-      // The real tunnel may only become renderable in the same state that
-      // enables its aperture stencil. Otherwise a low-opacity but unmasked
-      // tunnel frame can appear across the house facade.
-      tunnelWorld.reveal(tunnelReveal > PORTAL_VISIBLE_THRESHOLD ? tunnelReveal : 0);
+      // The full route mesh is too large to be a safe portal preview. Keep it
+      // completely out of the idyll until the existing spatial crossing;
+      // the Rift itself remains the dark, aperture-masked opening.
+      tunnelWorld.hide();
     }
     // Start the already visible tunnel's wall motion before the visitor
     // crosses the rift. This avoids a second visual "start" at entry.
@@ -698,22 +698,12 @@ function createSpacetimeRift(scene, entrance, tunnelStart, tunnelMesh, idyllWorl
       voidMesh.mesh.visibility = BABYLON.Scalar.Clamp(formation * (1 - opening * 1.1), 0, 1)
         * closureVisibility;
       voidMesh.mesh.setEnabled(voidMesh.mesh.visibility > RIFT_VISIBILITY_EPSILON);
-      const breakProgress = smoothstep((formation - 0.22) / 0.78);
-      fragments.forEach((fragment, index) => {
-        const visibility = BABYLON.Scalar.Clamp(formation * (0.22 + opening * 0.78), 0, 0.86)
-          * closureVisibility;
-        fragment.mesh.visibility = visibility;
-        fragment.mesh.setEnabled(visibility > RIFT_VISIBILITY_EPSILON);
-        // Keep the decorative fragments local to the aperture edge. The house
-        // remains visually intact; these read as small spatial debris rather
-        // than as pieces of the facade.
-        fragment.mesh.scaling.setAll(0.04 + formation * 0.22);
-        fragment.mesh.position.copyFrom(fragment.base
-          .add(lateral.scale(fragment.lateralDrift * breakProgress))
-          .add(forward.scale(fragment.depthDrift * breakProgress))
-          .add(new BABYLON.Vector3(0, fragment.verticalDrift * breakProgress, 0)));
-        fragment.mesh.rotation.y = fragment.rotation + elapsed * fragment.spin * breakProgress;
-        fragment.mesh.rotation.z = fragment.tilt + elapsed * fragment.spin * 0.5 * breakProgress;
+      // These decorative triangles visually read as broken parts of the house
+      // facade. Keep them disabled while the Rift opens so the house remains
+      // wholly intact and the aperture is the only visible effect.
+      fragments.forEach(({ mesh }) => {
+        mesh.visibility = 0;
+        mesh.setEnabled(false);
       });
       cracks.forEach((mesh, index) => {
         mesh.visibility = BABYLON.Scalar.Clamp(
